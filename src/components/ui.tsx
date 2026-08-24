@@ -1,6 +1,67 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { fmt } from "../lib/calc";
 
+/* ================= modal ================= */
+export function Modal({
+  title,
+  sub,
+  onClose,
+  children,
+  footer,
+  wide = false,
+}: {
+  title: string;
+  sub?: string;
+  onClose: () => void;
+  children: ReactNode;
+  footer?: ReactNode;
+  wide?: boolean;
+}) {
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", h);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", h);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
+  return (
+    <div
+      className="modal-overlay no-print fixed inset-0 z-[60] bg-ink/45 backdrop-blur-[2px] flex items-start sm:items-center justify-center p-3 sm:p-6 overflow-y-auto"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className={`modal-card bg-surface border border-line rounded-xl shadow-pop w-full ${
+          wide ? "max-w-3xl" : "max-w-xl"
+        } my-auto`}
+      >
+        <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-line">
+          <div>
+            <h3 className="font-display text-base uppercase tracking-wide text-ink">{title}</h3>
+            {sub && <p className="text-xs text-mut mt-0.5">{sub}</p>}
+          </div>
+          <button
+            onClick={onClose}
+            className="btn text-mut2 hover:text-ink hover:bg-well border border-transparent hover:border-line p-1.5 rounded-md"
+            aria-label="Закрыть"
+          >
+            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4">
+              <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+        <div className="px-5 py-4 max-h-[70vh] overflow-y-auto">{children}</div>
+        {footer && <div className="px-5 py-3.5 border-t border-line bg-raise rounded-b-xl flex items-center justify-end gap-2">{footer}</div>}
+      </div>
+    </div>
+  );
+}
+
 /* ================= scroll reveal ================= */
 export function useReveal<T extends HTMLElement>() {
   const ref = useRef<T>(null);
