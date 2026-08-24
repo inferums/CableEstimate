@@ -143,22 +143,19 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
         const lp = state.params.lotok;
         const tray = TRAYS.find((t) => t.mark === lp.trayMark) ?? TRAYS[0];
         const plate = PLATES.find((t) => t.mark === lp.plateMark) ?? PLATES[0];
-        const trays = Math.ceil(L / CALC.trayLength);
-        const plates = Math.ceil(L / CALC.plateLength);
-        push(2, `Укладка лотков ${tray.mark} по Серии 3.006.1-2.87`, "шт", trays);
-        push(2, `Укладка плит перекрытия ${plate.mark} по Серии 3.006.1-2.87`, "шт", plates);
+        const trays = Math.ceil(L / (tray.length / 1000));
+        const plates = Math.ceil(L / (plate.length / 1000));
+        push(2, `Укладка лотков ${tray.mark} по Серии 3.006.1-2`, "шт", trays);
+        push(2, `Укладка плит перекрытия ${plate.mark} по Серии 3.006.1-2`, "шт", plates);
         structVol =
-          (tray.innerW / 1000 + 0.14) *
-          (tray.innerH / 1000 + CALC.wallThk + 0.16) *
-          L;
+          (tray.innerW / 1000 + 0.14) * (tray.innerH / 1000 + CALC.wallThk + 0.16) * L;
         note = `лоток ${tray.mark}; плита ${plate.mark}`;
-      } else {
+      } else if (seg.type === "open") {
         const op = state.params.open;
         if (op.cover === "plates") {
           const plate = PLATES.find((t) => t.mark === op.plateMark) ?? PLATES[0];
-          const plates = Math.ceil(L / CALC.plateLength);
-          push(2, `Укладка плит перекрытия ${plate.mark} по Серии 3.006.1-2.87`, "шт", plates);
-          structVol = 0;
+          const plates = Math.ceil(L / (plate.length / 1000));
+          push(2, `Укладка плит перекрытия ${plate.mark} по Серии 3.006.1-2`, "шт", plates);
           note = `защита — плиты ${plate.mark}`;
         } else {
           const rows = state.chains * v.cablesPerChain;
@@ -167,6 +164,10 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
           structVol = rows * L * 0.124 * 0.05;
           note = `защита — ${PZK.mark}, ${rows} ряд(а)`;
         }
+      } else {
+        // splice — муфтовое поле
+        push(3, `Монтаж соединительной муфты (кабель ${v.label})`, "шт", cable / L);
+        note = `котлован B=${B} м под муфты`;
       }
 
       backfill = Math.max(0, excavation - beddingVol - topFillVol - structVol);
@@ -177,6 +178,29 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
 
     push(3, `Прокладка кабеля ${v.label} (${v.cableNote})`, "м", cable);
     push(3, "Укладка сигнальной ленты «Осторожно кабель»", "м", L * state.chains);
+
+    /* ---- благоустройство ---- */
+    if (seg.type !== "gnb") {
+      const surf =
+        state.surfaces.find((s) => s.id === seg.surfaceId) ?? state.surfaces[0];
+      if (surf && surf.layers.length > 0) {
+        const B = state.params[seg.type].width;
+        const area = B * L;
+        let waste = 0;
+        for (const layer of surf.layers) {
+          const t = Math.round(layer.thickness);
+          push(4, `Разработка покрытия «${surf.name}»: ${layer.name} (t=${t} см)`, "м²", area);
+          push(
+            4,
+            `Восстановление покрытия «${surf.name}»: ${layer.name} (t=${t} см)`,
+            "м²",
+            area,
+          );
+          waste += (area * layer.thickness) / 100;
+        }
+        push(4, `Погрузка и вывоз отходов от разборки покрытия «${surf.name}»`, "м³", waste);
+      }
+    }
   }
 
   return {
@@ -234,7 +258,7 @@ export function buildVor(state: ProjectState): VorResult {
       length: calcs.reduce((s, c) => s + (c.active ? c.seg.length : 0), 0),
       lengthByType,
       earth: calcs.reduce((s, c) => s + c.excavation, 0),
-      cable: calcs.reduce((s, c) => s + (c.active ? c.cable : 0), 0),
+      cable: calcs.reduce((s, c) => s + c.cable, 0),
       rows: rows.length,
       activeSegments: calcs.filter((c) => c.active).length,
     },

@@ -59,12 +59,17 @@ export function exportVorExcel(state: ProjectState, vor: VorResult) {
 
   // Лист 2 — участки
   const sAoa: (string | number)[][] = [
-    ["Участок", "Тип траншеи", "L, м", "H1, м", "H2, м", "H ср., м", "V земляных работ, м³", "Кабель, м", "Примечание"],
+    ["Участок", "Тип траншеи", "Покрытие", "L, м", "H1, м", "H2, м", "H ср., м", "V земляных работ, м³", "Кабель, м", "Примечание"],
   ];
   for (const c of vor.calcs) {
+    const surfName =
+      c.seg.type === "gnb"
+        ? "без вскрытия (ГНБ)"
+        : state.surfaces.find((s) => s.id === c.seg.surfaceId)?.name ?? "—";
     sAoa.push([
       segLabel(c.seg),
       `${TRENCH_META[c.seg.type].letter}) ${TRENCH_META[c.seg.type].label}`,
+      surfName,
       r2(c.seg.length),
       r2(c.seg.h1),
       r2(c.seg.h2),
@@ -75,12 +80,12 @@ export function exportVorExcel(state: ProjectState, vor: VorResult) {
     ]);
   }
   sAoa.push([]);
-  sAoa.push(["Итого", "", r2(vor.totals.length), "", "", "", r2(vor.totals.earth), r2(vor.totals.cable), ""]);
+  sAoa.push(["Итого", "", "", r2(vor.totals.length), "", "", "", r2(vor.totals.earth), r2(vor.totals.cable), ""]);
 
   const ws2 = XLSX.utils.aoa_to_sheet(sAoa);
   ws2["!cols"] = [
-    { wch: 9 }, { wch: 22 }, { wch: 8 }, { wch: 8 }, { wch: 8 },
-    { wch: 10 }, { wch: 20 }, { wch: 11 }, { wch: 40 },
+    { wch: 9 }, { wch: 22 }, { wch: 18 }, { wch: 8 }, { wch: 8 },
+    { wch: 8 }, { wch: 10 }, { wch: 20 }, { wch: 11 }, { wch: 40 },
   ];
 
   const wb = XLSX.utils.book_new();

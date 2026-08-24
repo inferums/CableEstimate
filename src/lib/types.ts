@@ -1,57 +1,65 @@
 export type VoltageClass = "0.4-10" | "35" | "110-220";
-export type TrenchType = "gnb" | "block" | "lotok" | "open";
-export type BeddingType = "sand" | "pgs";
-export type OpenCover = "plates" | "pzk";
+export type TrenchType = "gnb" | "block" | "lotok" | "open" | "splice";
 
 export interface PipeEntry {
   id: string;
   diameter: number; // мм
-  count: number; // шт труб в пучке
+  count: number;
+}
+
+export interface TrenchParamsBase {
+  width: number; // м
+  bedding: number; // м
+  beddingType: "sand" | "pgs";
 }
 
 export interface GnbParams {
-  boreDiameter: number; // диаметр скважины, мм
+  boreDiameter: number; // мм
   pipes: PipeEntry[];
 }
 
-export interface BlockParams {
-  width: number; // ширина траншеи, м
-  bedding: number; // толщина подсыпки, м
-  beddingType: BeddingType;
-  pipes: PipeEntry[];
-}
-
-export interface LotokParams {
-  width: number;
-  bedding: number;
-  beddingType: BeddingType;
+export interface LotokParams extends TrenchParamsBase {
   trayMark: string;
   plateMark: string;
 }
 
-export interface OpenParams {
-  width: number;
-  bedding: number;
-  beddingType: BeddingType;
-  cover: OpenCover; // плиты перекрытия либо ПЗК
+export interface OpenParams extends TrenchParamsBase {
+  cover: "plates" | "pzk";
   plateMark: string;
 }
 
+export type SpliceParams = TrenchParamsBase;
+
 export interface ParamsMap {
   gnb: GnbParams;
-  block: BlockParams;
+  block: TrenchParamsBase & { pipes: PipeEntry[] };
   lotok: LotokParams;
   open: OpenParams;
+  splice: SpliceParams;
+}
+
+/** Слой дорожного покрытия, см */
+export interface SurfaceLayer {
+  name: string;
+  thickness: number; // см
+}
+
+/** Тип покрытия для благоустройства */
+export interface Surface {
+  id: string;
+  name: string;
+  layers: SurfaceLayer[];
 }
 
 export interface Segment {
   id: string;
-  from: string; // точка А
-  to: string; // точка Б
+  from: string;
+  to: string;
   type: TrenchType;
   length: number; // м
-  h1: number; // глубина в точке А, м
-  h2: number; // глубина в точке Б, м
+  h1: number; // глубина в точке 1, м
+  h2: number; // глубина в точке 2, м
+  surfaceId: string; // покрытие для благоустройства
 }
 
 export interface ProjectState {
@@ -62,6 +70,7 @@ export interface ProjectState {
   chains: number;
   params: ParamsMap;
   segments: Segment[];
+  surfaces: Surface[];
 }
 
 export interface VorRow {
@@ -72,13 +81,9 @@ export interface VorRow {
   segments: string[];
 }
 
-export interface VorSection {
-  id: number;
-  title: string;
-}
-
-export const VOR_SECTIONS: VorSection[] = [
+export const VOR_SECTIONS = [
   { id: 1, title: "Земляные работы" },
-  { id: 2, title: "Монтаж конструкций и защитных труб" },
+  { id: 2, title: "Каналы, трубы и конструкции" },
   { id: 3, title: "Кабельные работы" },
-];
+  { id: 4, title: "Благоустройство" },
+] as const;

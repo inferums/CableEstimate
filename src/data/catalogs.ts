@@ -1,4 +1,4 @@
-import type { TrenchType, VoltageClass } from "../lib/types";
+import type { Surface, TrenchType, VoltageClass } from "../lib/types";
 
 /** Стандартные наружные диаметры труб ПНД (ПЭ100), мм */
 export const HDPE_DIAMETERS = [
@@ -6,8 +6,8 @@ export const HDPE_DIAMETERS = [
   355, 400, 450, 500, 630,
 ];
 
-/** Диаметры расширения скважины ГНБ, мм */
-export const BORE_DIAMETERS = [160, 200, 250, 315, 400, 500, 630];
+/** Диаметры расширения скважины ГНБ, мм (интервал 100, до 1000) */
+export const BORE_DIAMETERS = [200, 300, 400, 500, 600, 700, 800, 900, 1000];
 
 export interface TrayMark {
   mark: string;
@@ -17,17 +17,16 @@ export interface TrayMark {
   weight: number; // т / шт
 }
 
-/** Лотки ЛК по Серии 3.006.1-2.87 (вып. 1) */
+/** Лотки типа Л по Серии 3.006.1-2 */
 export const TRAYS: TrayMark[] = [
-  { mark: "ЛК 75.60.60-1", innerW: 750, innerH: 600, length: 590, weight: 0.53 },
-  { mark: "ЛК 75.90.60-1", innerW: 750, innerH: 900, length: 590, weight: 0.64 },
-  { mark: "ЛК 75.120.60-1", innerW: 750, innerH: 1200, length: 590, weight: 0.75 },
-  { mark: "ЛК 75.180.60-1", innerW: 750, innerH: 1800, length: 590, weight: 0.97 },
-  { mark: "ЛК 120.60.60-1", innerW: 1200, innerH: 600, length: 590, weight: 0.72 },
-  { mark: "ЛК 120.120.60-1", innerW: 1200, innerH: 1200, length: 590, weight: 0.95 },
-  { mark: "ЛК 150.60.60-1", innerW: 1500, innerH: 600, length: 590, weight: 0.84 },
-  { mark: "ЛК 150.120.60-1", innerW: 1500, innerH: 1200, length: 590, weight: 1.1 },
-  { mark: "ЛК 180.120.60-1", innerW: 1800, innerH: 1200, length: 590, weight: 1.24 },
+  { mark: "Л4-8", innerW: 400, innerH: 600, length: 1180, weight: 0.74 },
+  { mark: "Л5-8", innerW: 500, innerH: 600, length: 1180, weight: 0.8 },
+  { mark: "Л6-8", innerW: 600, innerH: 600, length: 1180, weight: 0.86 },
+  { mark: "Л7-8", innerW: 700, innerH: 600, length: 1180, weight: 0.92 },
+  { mark: "Л4-8/2", innerW: 400, innerH: 600, length: 590, weight: 0.37 },
+  { mark: "Л5-8/2", innerW: 500, innerH: 600, length: 590, weight: 0.4 },
+  { mark: "Л6-8/2", innerW: 600, innerH: 600, length: 590, weight: 0.43 },
+  { mark: "Л7-8/2", innerW: 700, innerH: 600, length: 590, weight: 0.46 },
 ];
 
 export interface PlateMark {
@@ -38,16 +37,14 @@ export interface PlateMark {
   load: string;
 }
 
-/** Плиты перекрытия П / ПТ по Серии 3.006.1-2.87 (вып. 1) */
+/** Плиты перекрытия (покрытия) типа П по Серии 3.006.1-2 */
 export const PLATES: PlateMark[] = [
-  { mark: "П 75.120.16-3", forWidth: 750, length: 1190, weight: 0.3, load: "до 10 тс" },
-  { mark: "ПТ 75.120.20-3", forWidth: 750, length: 1190, weight: 0.4, load: "Н-30 (тяж.)" },
-  { mark: "П 120.120.16-3", forWidth: 1200, length: 1190, weight: 0.36, load: "до 10 тс" },
-  { mark: "ПТ 120.120.20-3", forWidth: 1200, length: 1190, weight: 0.48, load: "Н-30 (тяж.)" },
-  { mark: "П 150.120.16-3", forWidth: 1500, length: 1190, weight: 0.42, load: "до 10 тс" },
-  { mark: "ПТ 150.120.20-3", forWidth: 1500, length: 1190, weight: 0.55, load: "Н-30 (тяж.)" },
-  { mark: "П 180.120.16-3", forWidth: 1800, length: 1190, weight: 0.47, load: "до 10 тс" },
-  { mark: "ПТ 180.120.20-3", forWidth: 1800, length: 1190, weight: 0.61, load: "Н-30 (тяж.)" },
+  { mark: "П5-8", forWidth: 500, length: 790, weight: 0.24, load: "до 10 тс" },
+  { mark: "П6-8", forWidth: 600, length: 790, weight: 0.28, load: "до 10 тс" },
+  { mark: "П7-8", forWidth: 700, length: 790, weight: 0.33, load: "до 10 тс" },
+  { mark: "П5д-8", forWidth: 500, length: 790, weight: 0.31, load: "Н-30 (тяж.)" },
+  { mark: "П6д-8", forWidth: 600, length: 790, weight: 0.36, load: "Н-30 (тяж.)" },
+  { mark: "П7д-8", forWidth: 700, length: 790, weight: 0.41, load: "Н-30 (тяж.)" },
 ];
 
 export const PZK = {
@@ -109,15 +106,62 @@ export const TRENCH_META: Record<
     short: "открытая прокладка",
     desc: "кабель в траншее с защитой",
   },
+  splice: {
+    letter: "д",
+    label: "Муфтовое поле",
+    short: "муфтовое поле",
+    desc: "котлован для монтажа соединительных муфт",
+  },
 };
+
+/** Покрытия для благоустройства (по умолчанию) */
+export const DEFAULT_SURFACES: Surface[] = [
+  {
+    id: "lawn",
+    name: "Газон",
+    layers: [{ name: "Растительный (плодородный) грунт", thickness: 20 }],
+  },
+  {
+    id: "sidewalk",
+    name: "Тротуар",
+    layers: [
+      { name: "Плитка тротуарная", thickness: 6 },
+      { name: "Песок", thickness: 5 },
+      { name: "Щебень", thickness: 15 },
+    ],
+  },
+  {
+    id: "path",
+    name: "Набивная дорожка",
+    layers: [
+      { name: "Щебень", thickness: 10 },
+      { name: "Песок", thickness: 5 },
+    ],
+  },
+  {
+    id: "road",
+    name: "Проезжая часть",
+    layers: [
+      { name: "Асфальтобетон (верхний слой)", thickness: 5 },
+      { name: "Асфальтобетон (нижний слой)", thickness: 6 },
+      { name: "Щебень", thickness: 15 },
+    ],
+  },
+  {
+    id: "gravel",
+    name: "Щебеночная дорога",
+    layers: [
+      { name: "Щебень", thickness: 15 },
+      { name: "ПГС", thickness: 10 },
+    ],
+  },
+];
 
 /** Константы расчета */
 export const CALC = {
   topFill: 0.1, // засыпка песком/ПГС поверх конструкций, м
-  trayLength: 0.59, // длина лотка, м
-  plateLength: 1.19, // длина плиты перекрытия, м
   spacerStep: 1.5, // шаг дистанционных фиксаторов, м
   slopeDepth: 1.5, // глубина, свыше которой учитываются откосы
   slopeK: 1.15, // коэффициент откосов
-  wallThk: 0.07, // стенка/дно лотка, м
+  wallThk: 0.07, // стенка лотка, м
 };

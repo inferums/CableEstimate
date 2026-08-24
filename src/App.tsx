@@ -1,29 +1,32 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SegmentsTable } from "./components/segments";
-import { TrenchParams } from "./components/params";
 import {
-  BtnGhost,
-  BtnPrimary,
+  defaultParamsFor,
+  TrenchTypeCards,
+  TrenchTypeForm,
+  TypePickerList,
+  TYPE_ICONS,
+} from "./components/params";
+import {
   FlashValue,
-  IconBlock,
   IconBolt,
   IconDoc,
-  IconDownload,
-  IconGnb,
   IconLayers,
-  IconLotok,
-  IconOpen,
   IconPlus,
-  IconPrint,
   IconRoute,
+  IconShield,
   IconSliders,
   Logo,
+  Modal,
   NumInput,
   Reveal,
   Section,
+  useReveal,
 } from "./components/ui";
 import { VorPreview, VorSheet } from "./components/vor";
-import { TRENCH_META, VOLTAGE_META } from "./data/catalogs";
+import { SurfacesModal } from "./components/surfaces";
+import { TrenchDiagram } from "./components/diagrams";
+import { DEFAULT_SURFACES, TRENCH_META, VOLTAGE_META } from "./data/catalogs";
 import { buildVor } from "./lib/calc";
 import { exportVorExcel } from "./lib/excel";
 import type {
@@ -34,7 +37,7 @@ import type {
   VoltageClass,
 } from "./lib/types";
 
-let segUid = 0;
+let segUid = 100;
 const newSegId = () => `s${++segUid}`;
 
 const VOLT_BIG: Record<VoltageClass, string> = {
@@ -43,534 +46,475 @@ const VOLT_BIG: Record<VoltageClass, string> = {
   "110-220": "110–220",
 };
 
-const NAV = [
-  { id: "s01", num: "01", label: "Тип объекта", Icon: IconBolt },
-  { id: "s02", num: "02", label: "Типы траншеи", Icon: IconLayers },
-  { id: "s03", num: "03", label: "Параметры траншей", Icon: IconSliders },
-  { id: "s04", num: "04", label: "Участки трассы", Icon: IconRoute },
-  { id: "s05", num: "05", label: "Ведомость · ВОР", Icon: IconDoc },
-];
-
 function initialState(): ProjectState {
   return {
     projectName: "Реконструкция КЛ 10 кВ от ПС «Заречная»",
     projectCode: "24-07-КЛ",
     voltage: "0.4-10",
-    types: ["gnb", "block", "lotok", "open"],
+    types: ["lotok", "open", "block", "gnb", "splice"],
     chains: 2,
     params: {
-      gnb: {
-        boreDiameter: 250,
-        pipes: [{ id: "p1", diameter: 110, count: 4 }],
-      },
-      block: {
-        width: 0.8,
-        bedding: 0.1,
-        beddingType: "sand",
-        pipes: [{ id: "p2", diameter: 160, count: 2 }],
-      },
-      lotok: {
-        width: 1.0,
-        bedding: 0.1,
-        beddingType: "sand",
-        trayMark: "ЛК 75.120.60-1",
-        plateMark: "П 75.120.16-3",
-      },
-      open: {
-        width: 0.7,
-        bedding: 0.1,
-        beddingType: "sand",
-        cover: "pzk",
-        plateMark: "ПТ 75.120.20-3",
-      },
+      gnb: { boreDiameter: 300, pipes: [{ id: "p1", diameter: 110, count: 4 }] },
+      block: { width: 0.8, bedding: 0.1, beddingType: "sand", pipes: [{ id: "p2", diameter: 160, count: 2 }] },
+      lotok: { width: 1.0, bedding: 0.1, beddingType: "sand", trayMark: "Л4-8", plateMark: "П5-8" },
+      open: { width: 0.7, bedding: 0.1, beddingType: "sand", cover: "pzk", plateMark: "П5д-8" },
+      splice: { width: 1.5, bedding: 0.1, beddingType: "sand" },
     },
     segments: [
-      { id: newSegId(), from: "1", to: "2", type: "lotok", length: 6, h1: 2.5, h2: 3 },
-      { id: newSegId(), from: "2", to: "3", type: "open", length: 45, h1: 1.2, h2: 1.4 },
-      { id: newSegId(), from: "3", to: "4", type: "block", length: 12, h1: 1.5, h2: 1.5 },
-      { id: newSegId(), from: "4", to: "5", type: "gnb", length: 28, h1: 3, h2: 3 },
-      { id: newSegId(), from: "5", to: "6", type: "lotok", length: 80, h1: 1.0, h2: 1.2 },
+      { id: newSegId(), from: "1", to: "2", type: "lotok", length: 6, h1: 2.5, h2: 3, surfaceId: "sidewalk" },
+      { id: newSegId(), from: "2", to: "3", type: "open", length: 45, h1: 1.2, h2: 1.4, surfaceId: "road" },
+      { id: newSegId(), from: "3", to: "4", type: "block", length: 12, h1: 1.5, h2: 1.5, surfaceId: "sidewalk" },
+      { id: newSegId(), from: "4", to: "5", type: "gnb", length: 28, h1: 3, h2: 3, surfaceId: "road" },
+      { id: newSegId(), from: "5", to: "6", type: "splice", length: 4, h1: 1.8, h2: 1.8, surfaceId: "lawn" },
+      { id: newSegId(), from: "6", to: "7", type: "lotok", length: 80, h1: 1.0, h2: 1.2, surfaceId: "lawn" },
     ],
+    surfaces: DEFAULT_SURFACES,
   };
 }
 
-/* живой кабельный провод в подвале сайдбара */
-function LiveCable() {
-  return (
-    <svg viewBox="0 0 240 40" className="w-full h-9 block" preserveAspectRatio="none" aria-hidden>
-      <path d="M0 12h240" stroke="var(--color-line)" strokeWidth="1.5" />
-      <path d="M40 12l10 16h26l10-16M130 12l10 16h26l10-16" stroke="var(--color-line)" strokeWidth="1.5" fill="none" />
-      <path d="M0 26h240" stroke="var(--color-accent)" strokeWidth="1.8" className="cableflow" opacity=".65" />
-    </svg>
-  );
-}
+type ModalState =
+  | { kind: "picker" }
+  | { kind: "type"; type: TrenchType; isNew: boolean }
+  | { kind: "surfaces" }
+  | null;
+
+const NAV = [
+  { id: "sec-object", num: "01", label: "Тип объекта", Icon: IconBolt },
+  { id: "sec-trench", num: "02", label: "Типы траншеи", Icon: IconLayers },
+  { id: "sec-params", num: "03", label: "Параметры", Icon: IconSliders },
+  { id: "sec-segments", num: "04", label: "Участки трассы", Icon: IconRoute },
+  { id: "sec-vor", num: "05", label: "Ведомость", Icon: IconDoc },
+];
 
 export default function App() {
   const [state, setState] = useState<ProjectState>(initialState);
-  const [activeNav, setActiveNav] = useState("s01");
+  const [modal, setModal] = useState<ModalState>(null);
+  const [draft, setDraft] = useState<ParamsMap[TrenchType] | null>(null);
+  const [activeNav, setActiveNav] = useState("sec-object");
   const sheetRef = useRef<HTMLDivElement>(null);
+  const revealSheet = useReveal<HTMLDivElement>();
   const vor = useMemo(() => buildVor(state), [state]);
-
-  /* scrollspy для навигации */
-  useEffect(() => {
-    const els = NAV.map((n) => document.getElementById(n.id)).filter(Boolean) as HTMLElement[];
-    if (!els.length) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          if (e.isIntersecting) setActiveNav(e.target.id);
-        }
-      },
-      { rootMargin: "-35% 0px -55% 0px" },
-    );
-    els.forEach((el) => io.observe(el));
-    return () => io.disconnect();
-  }, []);
-
-  const goTo = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
 
   const patch = (p: Partial<ProjectState>) => setState((s) => ({ ...s, ...p }));
 
-  const updateParams = <K extends TrenchType>(type: K, p: ParamsMap[K]) =>
-    setState((s) => ({ ...s, params: { ...s.params, [type]: p } }));
+  const meta = VOLTAGE_META[state.voltage];
+  const cablesPerSegment = state.chains * meta.cablesPerChain;
 
-  const toggleType = (t: TrenchType) =>
+  /* -------- навигация + scrollspy -------- */
+  const go = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setActiveNav(id);
+  };
+  useEffect(() => {
+    const io = new IntersectionObserver(
+      (es) => es.forEach((e) => e.isIntersecting && setActiveNav(e.target.id)),
+      { rootMargin: "-30% 0px -55% 0px" },
+    );
+    NAV.forEach((n) => {
+      const el = document.getElementById(n.id);
+      if (el) io.observe(el);
+    });
+    return () => io.disconnect();
+  }, []);
+
+  /* -------- типы прокладки -------- */
+  const openTypeEditor = (type: TrenchType, isNew: boolean) => {
+    setDraft(
+      isNew
+        ? defaultParamsFor(type)
+        : (JSON.parse(JSON.stringify(state.params[type])) as ParamsMap[TrenchType]),
+    );
+    setModal({ kind: "type", type, isNew });
+  };
+
+  const saveTypeEditor = () => {
+    if (modal?.kind !== "type" || !draft) return;
+    const { type, isNew } = modal;
     setState((s) => ({
       ...s,
-      types: s.types.includes(t) ? s.types.filter((x) => x !== t) : [...s.types, t],
+      types: isNew && !s.types.includes(type) ? [...s.types, type] : s.types,
+      params: { ...s.params, [type]: draft },
     }));
+    setModal(null);
+  };
 
+  const deleteType = (type: TrenchType) =>
+    setState((s) => ({ ...s, types: s.types.filter((t) => t !== type) }));
+
+  /* -------- участки -------- */
   const updateSegment = (id: string, part: Partial<Segment>) =>
     setState((s) => ({
       ...s,
       segments: s.segments.map((x) => (x.id === id ? { ...x, ...part } : x)),
     }));
 
-  const addSegment = () =>
+  const insertSegment = (index: number) =>
     setState((s) => {
-      const last = s.segments[s.segments.length - 1];
-      const nextFrom = last ? last.to : "1";
-      const num = Number(last?.to);
-      const nextTo = last ? (Number.isFinite(num) && num > 0 ? String(num + 1) : "") : "2";
-      return {
-        ...s,
-        segments: [
-          ...s.segments,
-          {
-            id: newSegId(),
-            from: nextFrom,
-            to: nextTo,
-            type: s.types[0] ?? "open",
-            length: 10,
-            h1: 1,
-            h2: 1,
-          },
-        ],
+      const prev = s.segments[index - 1];
+      const next = s.segments[index];
+      const num = Number(prev?.to);
+      const seg: Segment = {
+        id: newSegId(),
+        from: prev?.to ?? "1",
+        to: next?.from ?? (Number.isFinite(num) && num > 0 ? String(num + 1) : ""),
+        type: prev?.type ?? s.types[0] ?? "open",
+        length: 10,
+        h1: prev?.h2 ?? 1,
+        h2: prev?.h2 ?? 1,
+        surfaceId: prev?.surfaceId ?? s.surfaces[0]?.id ?? "lawn",
       };
+      const segments = [...s.segments];
+      segments.splice(index, 0, seg);
+      return { ...s, segments };
     });
 
   const removeSegment = (id: string) =>
     setState((s) => ({ ...s, segments: s.segments.filter((x) => x.id !== id) }));
 
-  const meta = VOLTAGE_META[state.voltage];
+  const modalType = modal?.kind === "type" ? modal.type : null;
 
   return (
-    <div className="min-h-screen relative">
-      <div className="ambient" />
+    <div className="relative min-h-screen">
+      <div className="ambient no-print" />
 
-      <div className="relative z-10 flex flex-col min-h-screen">
-        {/* ================= topbar ================= */}
-        <header className="no-print sticky top-0 z-40 h-16 bg-surface/90 backdrop-blur-md border-b border-line">
-          <div className="h-full flex items-center justify-between gap-4 px-4 lg:px-6">
-            <div className="flex items-center gap-3 min-w-0">
-              <Logo className="w-9 h-9 shrink-0" />
-              <div className="leading-none min-w-0">
-                <div className="font-display font-bold text-[15px] tracking-tight text-ink">
-                  ВОР<span className="text-accent">·</span>КЛ
-                </div>
-                <div className="text-[10.5px] text-mut mt-1 truncate">
-                  ведомость объемов · кабельные линии
-                </div>
+      {/* ================= top bar ================= */}
+      <header className="no-print sticky top-0 z-40 h-16 bg-surface border-b border-line">
+        <div className="max-w-[1560px] mx-auto px-4 lg:px-8 h-full flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Logo className="w-8 h-8 text-accent" />
+            <div className="leading-none">
+              <div className="font-display text-[15px] tracking-wide text-ink">
+                ВОР<span className="text-accent">·</span>КЛ
               </div>
-            </div>
-
-            <div className="hidden lg:flex items-center gap-5 font-mono text-xs text-mut">
-              <span>
-                трасса <b className="text-ink font-bold"><FlashValue value={vor.totals.length} decimals={0} /></b> м
-              </span>
-              <span className="w-px h-4 bg-line" />
-              <span>
-                земля <b className="text-accent-deep font-bold"><FlashValue value={vor.totals.earth} decimals={1} /></b> м³
-              </span>
-              <span className="w-px h-4 bg-line" />
-              <span>
-                кабель <b className="text-ink font-bold"><FlashValue value={vor.totals.cable} decimals={0} /></b> м
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <BtnPrimary
-                onClick={() => exportVorExcel(state, vor)}
-                disabled={vor.rows.length === 0}
-                className="h-9 px-3.5 text-[13px]"
-              >
-                <IconDownload /> <span className="hidden sm:inline">Excel</span>
-              </BtnPrimary>
-              <BtnGhost onClick={() => window.print()} className="h-9 px-3.5 text-[13px]">
-                <IconPrint /> <span className="hidden sm:inline">Печать</span>
-              </BtnGhost>
+              <div className="text-[10px] text-mut2 mt-1 tracking-wide">
+                ведомость объемов работ · кабельные линии
+              </div>
             </div>
           </div>
-        </header>
+          <div className="hidden md:flex items-center gap-5 font-mono text-[11px] uppercase tracking-wider text-mut">
+            <span>
+              уч. <b className="text-accent">{vor.totals.activeSegments}</b>
+            </span>
+            <span>
+              поз. <b className="text-accent">{vor.totals.rows}</b>
+            </span>
+            <span className="flex items-center gap-1.5 text-ok">
+              <span className="w-1.5 h-1.5 rounded-full bg-ok pulse-dot" />
+              расчет активен
+            </span>
+          </div>
+        </div>
+      </header>
 
-        {/* ================= mobile nav chips ================= */}
-        <nav className="no-print lg:hidden sticky top-16 z-30 bg-page/95 backdrop-blur border-b border-line px-4 py-2.5 flex gap-2 overflow-x-auto">
-          {NAV.map((n) => (
-            <button
-              key={n.id}
-              onClick={() => goTo(n.id)}
-              className={`btn shrink-0 flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold border transition-colors ${
-                activeNav === n.id
-                  ? "bg-accent text-white border-accent"
-                  : "bg-surface text-mut border-line hover:text-accent hover:border-accent/50"
-              }`}
-            >
-              <span className="font-mono text-[10px] opacity-70">{n.num}</span>
-              {n.label}
-            </button>
-          ))}
-        </nav>
+      <div className="relative z-10 flex max-w-[1560px] mx-auto">
+        {/* ================= sidebar ================= */}
+        <aside className="no-print hidden lg:flex flex-col w-[268px] shrink-0 border-r border-line bg-page/70 sticky top-16 h-[calc(100vh-4rem)] px-4 py-5">
+          <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-mut2">
+            Разделы
+          </p>
+          <nav className="space-y-1">
+            {NAV.map(({ id, num, label, Icon }) => {
+              const active = activeNav === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => go(id)}
+                  className={`btn relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-colors ${
+                    active ? "bg-accent-soft text-accent-deep" : "text-body hover:bg-well"
+                  }`}
+                >
+                  <span className={`absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-full transition-colors ${active ? "bg-accent" : "bg-transparent"}`} />
+                  <Icon className={`w-[18px] h-[18px] ${active ? "text-accent" : "text-mut"}`} />
+                  <span className="flex-1 text-left">{label}</span>
+                  <span className={`font-mono text-[10px] ${active ? "text-accent" : "text-mut2"}`}>{num}</span>
+                </button>
+              );
+            })}
+          </nav>
 
-        <div className="flex flex-1 max-w-[1720px] w-full mx-auto">
-          {/* ================= sidebar ================= */}
-          <aside className="no-print hidden lg:flex flex-col w-[264px] shrink-0 border-r border-line bg-page/70 sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto">
-            <div className="p-4 flex-1 flex flex-col">
-              <div className="px-3 mb-2 text-[10.5px] font-bold uppercase tracking-[0.14em] text-mut2">
-                Разделы расчета
-              </div>
-              <nav className="space-y-1">
-                {NAV.map((n) => {
-                  const active = activeNav === n.id;
-                  return (
-                    <button
-                      key={n.id}
-                      onClick={() => goTo(n.id)}
-                      className={`btn group w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left relative transition-colors ${
-                        active ? "bg-accent-soft text-accent-deep" : "text-body hover:bg-well"
-                      }`}
-                    >
-                      <span
-                        className={`absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r bg-accent transition-all ${
-                          active ? "opacity-100" : "opacity-0 group-hover:opacity-40"
-                        }`}
-                      />
-                      <n.Icon
-                        className={`w-5 h-5 shrink-0 transition-colors ${
-                          active ? "text-accent" : "text-mut group-hover:text-body"
-                        }`}
-                      />
-                      <span className={`flex-1 text-[13.5px] font-semibold ${active ? "" : ""}`}>
-                        {n.label}
-                      </span>
-                      <span
-                        className={`font-mono text-[10px] font-bold ${
-                          active ? "text-accent" : "text-mut2"
-                        }`}
-                      >
-                        {n.num}
-                      </span>
-                    </button>
-                  );
-                })}
-              </nav>
-
-              <div className="mt-auto space-y-3 pt-6">
-                {/* карточка проекта */}
-                <div className="bg-surface border border-line rounded-xl p-4 shadow-card">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-mut2 mb-2">
-                    Текущий объект
+          <div className="mt-auto">
+            {/* живой кабель */}
+            <svg viewBox="0 0 240 40" className="w-full h-9" preserveAspectRatio="none">
+              <path d="M0 12h240" stroke="#E4E4E7" strokeWidth="1.5" />
+              <path d="M40 12l14 16h28l14-16M140 12l14 16h28l14-16" stroke="#E4E4E7" strokeWidth="1.5" fill="none" />
+              <path d="M0 26h240" stroke="#2563EB" strokeWidth="1.6" className="cableflow" />
+            </svg>
+            <div className="border border-line rounded-xl bg-surface shadow-card p-3.5">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-mut2">Текущий объект</div>
+              <div className="mt-1 text-[13px] font-semibold text-ink leading-snug">{state.projectName || "—"}</div>
+              <div className="mt-1 font-mono text-[11px] text-accent">{state.projectCode || "без шифра"}</div>
+              <div className="mt-3 grid grid-cols-3 divide-x divide-line border border-line rounded-lg bg-raise">
+                {[
+                  { l: "Траншея", v: fmtShort(vor.totals.length), u: "м" },
+                  { l: "Земля", v: fmtShort(vor.totals.earth), u: "м³" },
+                  { l: "Кабель", v: fmtShort(vor.totals.cable), u: "м" },
+                ].map((s) => (
+                  <div key={s.l} className="px-2 py-1.5 text-center">
+                    <div className="text-[8.5px] uppercase tracking-wider text-mut2">{s.l}</div>
+                    <div className="font-mono text-[11.5px] font-semibold text-accent-deep leading-tight">
+                      {s.v}
+                      <span className="text-mut2 font-normal text-[9px]"> {s.u}</span>
+                    </div>
                   </div>
-                  <div className="text-[13px] font-bold text-ink leading-snug line-clamp-2">
-                    {state.projectName || "Без названия"}
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <span className="font-mono text-[10px] font-bold text-accent bg-accent-soft border border-accent-100 rounded px-1.5 py-0.5">
-                      {meta.short}
-                    </span>
-                    <span className="font-mono text-[10px] font-bold text-mut bg-well border border-line rounded px-1.5 py-0.5">
-                      {state.chains} цеп.
-                    </span>
-                    <span className="font-mono text-[10px] font-bold text-mut bg-well border border-line rounded px-1.5 py-0.5">
-                      {state.projectCode || "шифр —"}
-                    </span>
-                  </div>
-                  <div className="mt-3 pt-3 border-t border-line grid grid-cols-3 gap-1 text-center">
-                    {[
-                      { l: "уч.", v: vor.totals.activeSegments },
-                      { l: "поз.", v: vor.totals.rows },
-                      { l: "м³", v: Math.round(vor.totals.earth) },
-                    ].map((s) => (
-                      <div key={s.l}>
-                        <div className="font-mono text-sm font-extrabold text-ink">{s.v}</div>
-                        <div className="text-[9.5px] font-bold uppercase tracking-wider text-mut2">{s.l}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="bg-surface border border-line rounded-xl px-3 pt-3 pb-1 shadow-card">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-mut2">
-                      Расчет активен
-                    </span>
-                    <span className="w-2 h-2 rounded-full bg-ok pulse-dot" />
-                  </div>
-                  <LiveCable />
-                </div>
+                ))}
               </div>
             </div>
-          </aside>
+          </div>
+        </aside>
 
-          {/* ================= main ================= */}
-          <main className="flex-1 min-w-0 px-4 lg:px-8 py-6 lg:py-8">
-            <div className="grid xl:grid-cols-[minmax(0,1fr)_344px] gap-6 items-start">
-              <div className="space-y-6 min-w-0">
-                {/* ---------- 01 объект ---------- */}
-                <Section
-                  num="01"
-                  title="Тип объекта"
-                  sub="Класс напряжения определяет число кабелей на цепь и наименования позиций кабельных работ."
-                  className="print-hide"
-                  id="s01"
-                >
-                  <div className="grid md:grid-cols-[1fr_250px] gap-5 items-start">
-                    <div>
-                      <div className="grid grid-cols-3 gap-3">
-                        {(Object.keys(VOLTAGE_META) as VoltageClass[]).map((v, i) => {
-                          const m = VOLTAGE_META[v];
-                          const active = state.voltage === v;
-                          return (
-                            <Reveal key={v} delay={i * 60}>
-                              <button
-                                type="button"
-                                onClick={() => patch({ voltage: v })}
-                                className={`btn w-full text-left rounded-xl border px-4 py-4 transition-all ${
-                                  active
-                                    ? "border-accent bg-accent-soft shadow-[0_8px_24px_-12px_rgba(37,99,235,0.45)]"
-                                    : "border-line bg-surface hover:border-accent/50 hover:-translate-y-0.5"
-                                }`}
-                              >
-                                <div
-                                  className={`font-display font-bold text-xl sm:text-2xl leading-none tracking-tight ${
-                                    active ? "text-accent-deep" : "text-ink"
-                                  }`}
-                                >
-                                  {VOLT_BIG[v]}
-                                  <span className="text-xs sm:text-sm font-semibold align-top ml-1 text-mut">кВ</span>
-                                </div>
-                                <div className="mt-2.5 text-[11px] leading-snug text-mut">{m.cableNote}</div>
-                                <div
-                                  className={`mt-3 h-1 rounded-full overflow-hidden bg-well ${active ? "" : "opacity-50"}`}
-                                >
-                                  <div
-                                    className={`h-full bg-accent rounded-full barfill ${active ? "" : "scale-x-0"}`}
-                                    style={{ width: active ? "100%" : "0%" }}
-                                  />
-                                </div>
-                              </button>
-                            </Reveal>
-                          );
-                        })}
-                      </div>
-
-                      <Reveal delay={120}>
-                        <div className="mt-4 grid sm:grid-cols-2 gap-3">
-                          <label className="block">
-                            <span className="block mb-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-mut">
-                              Наименование объекта
+        {/* ================= main ================= */}
+        <main className="flex-1 min-w-0 px-4 lg:px-8 py-7 grid xl:grid-cols-[minmax(0,1fr)_370px] gap-8 items-start">
+          <div className="space-y-10 min-w-0">
+            {/* ---------- 01 объект ---------- */}
+            <div id="sec-object" className="scroll-mt-24">
+              <Section num="01" title="Тип объекта" sub="Класс напряжения определяет число кабелей на цепь и наименования кабельных работ." className="print-hide">
+                <div className="grid grid-cols-3 gap-3">
+                  {(Object.keys(VOLTAGE_META) as VoltageClass[]).map((v, i) => {
+                    const m = VOLTAGE_META[v];
+                    const active = state.voltage === v;
+                    return (
+                      <Reveal key={v} delay={i * 60}>
+                        <button
+                          type="button"
+                          onClick={() => patch({ voltage: v })}
+                          className={`btn w-full text-left border rounded-xl px-4 sm:px-5 py-4 sm:py-5 transition-colors ${
+                            active
+                              ? "border-accent bg-accent-soft shadow-[0_10px_28px_-14px_rgba(37,99,235,0.45)]"
+                              : "border-line bg-surface hover:border-accent/50 shadow-card"
+                          }`}
+                        >
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className={`font-display text-2xl sm:text-3xl leading-none ${active ? "text-accent-deep" : "text-ink"}`}>
+                              {VOLT_BIG[v]}
+                              <span className="text-sm align-top ml-1 text-mut">кВ</span>
                             </span>
-                            <input
-                              value={state.projectName}
-                              onChange={(e) => patch({ projectName: e.target.value })}
-                              placeholder="Например: КЛ 10 кВ от ПС «Заречная»"
-                              className="w-full h-10 bg-raise border border-line rounded-lg px-3 text-sm font-medium text-ink outline-none transition-all focus:bg-surface focus:border-accent focus:ring-4 focus:ring-accent/10 hover:border-line2 placeholder:text-mut2"
-                            />
-                          </label>
-                          <label className="block">
-                            <span className="block mb-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-mut">
-                              Шифр проекта
-                            </span>
-                            <input
-                              value={state.projectCode}
-                              onChange={(e) => patch({ projectCode: e.target.value })}
-                              placeholder="24-07-КЛ"
-                              className="w-full h-10 bg-raise border border-line rounded-lg px-3 font-mono text-sm font-medium text-accent-deep outline-none transition-all focus:bg-surface focus:border-accent focus:ring-4 focus:ring-accent/10 hover:border-line2 placeholder:text-mut2"
-                            />
-                          </label>
-                        </div>
-                      </Reveal>
-                    </div>
-
-                    <Reveal delay={160}>
-                      <div className="bg-raise border border-line rounded-xl p-4">
-                        <label className="block">
-                          <span className="block mb-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-mut">
-                            Цепей в одной траншее
-                          </span>
-                          <NumInput
-                            value={state.chains}
-                            onChange={(n) => patch({ chains: Math.max(1, Math.round(n)) })}
-                            step={1}
-                            min={1}
-                            suffix="цеп."
-                          />
-                        </label>
-                        <p className="mt-3 text-xs text-mut leading-relaxed">
-                          На каждую цепь — <b className="font-mono text-accent-deep">{meta.cablesPerChain}</b> каб. ×
-                          сигнальная лента. Кабелей на участок:{" "}
-                          <b className="font-mono text-accent-deep">{state.chains * meta.cablesPerChain}</b>
-                        </p>
-                      </div>
-                    </Reveal>
-                  </div>
-                </Section>
-
-                {/* ---------- 02 типы траншеи ---------- */}
-                <Section
-                  num="02"
-                  title="Типы траншеи"
-                  sub="Множественный выбор — для каждого выбранного типа далее задаются свои параметры."
-                  className="print-hide"
-                  id="s02"
-                >
-                  <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-                    {(["gnb", "block", "lotok", "open"] as TrenchType[]).map((t, i) => {
-                      const m = TRENCH_META[t];
-                      const active = state.types.includes(t);
-                      const Icon = { gnb: IconGnb, block: IconBlock, lotok: IconLotok, open: IconOpen }[t];
-                      const len = vor.totals.lengthByType[t] ?? 0;
-                      return (
-                        <Reveal key={t} delay={i * 60}>
-                          <button
-                            type="button"
-                            onClick={() => toggleType(t)}
-                            className={`btn relative w-full text-left rounded-xl border px-4 py-4 overflow-hidden transition-all ${
-                              active
-                                ? "border-accent bg-accent-soft shadow-[0_8px_24px_-14px_rgba(37,99,235,0.5)]"
-                                : "border-line bg-surface hover:border-line2 hover:bg-raise"
-                            }`}
-                          >
                             <span
-                              className={`absolute top-0 left-0 h-full w-1 transition-colors ${
-                                active ? "bg-accent" : "bg-transparent"
-                              }`}
-                            />
-                            <div className="flex items-center justify-between">
-                              <span
-                                className={`font-mono text-xs font-bold w-6 h-6 rounded-md flex items-center justify-center transition-colors ${
-                                  active ? "bg-accent text-white" : "bg-well border border-line text-mut"
-                                }`}
-                              >
-                                {m.letter}
-                              </span>
-                              <span className={active ? "text-accent" : "text-mut2"}>
-                                <Icon className="w-8 h-8" />
-                              </span>
-                            </div>
-                            <div
-                              className={`mt-2.5 font-display font-semibold text-[13.5px] tracking-tight ${
-                                active ? "text-ink" : "text-mut"
+                              className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${
+                                active ? "border-accent bg-accent" : "border-line2"
                               }`}
                             >
-                              {m.label}
-                            </div>
-                            <div className="mt-1 font-mono text-[10.5px] font-semibold text-mut">
-                              {active ? (len > 0 ? `${len} м трассы` : "выбран") : "не используется"}
-                            </div>
-                          </button>
-                        </Reveal>
-                      );
-                    })}
+                              {active && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                            </span>
+                          </div>
+                          <div className="mt-2.5 text-[11px] leading-snug text-mut">{m.cableNote}</div>
+                        </button>
+                      </Reveal>
+                    );
+                  })}
+                </div>
+
+                <Reveal delay={120}>
+                  <div className="mt-3 grid sm:grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,0.8fr)] gap-3">
+                    <label className="block">
+                      <span className="block mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-mut">Наименование объекта</span>
+                      <input
+                        value={state.projectName}
+                        onChange={(e) => patch({ projectName: e.target.value })}
+                        placeholder="Например: КЛ 10 кВ от ПС «Заречная»"
+                        className="w-full bg-surface border border-line rounded-lg px-3.5 py-2.5 text-sm text-ink shadow-card outline-none focus:border-accent focus:ring-2 focus:ring-accent/25 placeholder:text-mut2"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="block mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-mut">Шифр проекта</span>
+                      <input
+                        value={state.projectCode}
+                        onChange={(e) => patch({ projectCode: e.target.value })}
+                        placeholder="24-07-КЛ"
+                        className="w-full bg-surface border border-line rounded-lg px-3.5 py-2.5 font-mono text-sm text-accent-deep shadow-card outline-none focus:border-accent focus:ring-2 focus:ring-accent/25 placeholder:text-mut2"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="block mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-mut">
+                        Цепей в одной траншее
+                      </span>
+                      <NumInput
+                        value={state.chains}
+                        onChange={(n) => patch({ chains: Math.max(1, Math.round(n)) })}
+                        step={1}
+                        min={1}
+                        suffix="цеп."
+                      />
+                    </label>
                   </div>
-                  {state.types.length === 0 && (
-                    <p className="mt-4 flex items-center gap-2 text-xs font-medium text-danger bg-danger-soft border border-danger/20 rounded-lg px-3.5 py-2.5">
-                      <IconPlus className="w-3.5 h-3.5 rotate-45 shrink-0" /> Выберите хотя бы один тип
-                      траншеи — участки без активного типа исключаются из расчета.
-                    </p>
-                  )}
-                </Section>
+                  <p className="mt-2.5 text-[11px] text-mut2">
+                    На каждую цепь — <span className="text-accent font-mono">{meta.cablesPerChain}</span> каб. × сигнальная лента ·
+                    всего кабелей на участок: <span className="text-accent font-mono">{cablesPerSegment}</span>
+                  </p>
+                </Reveal>
+              </Section>
+            </div>
 
-                {/* ---------- 03 параметры ---------- */}
-                <Section
-                  num="03"
-                  title="Параметры траншей"
-                  sub="Ширина, подсыпка и конструкции для каждого выбранного типа. ГНБ — диаметр скважины и пучок труб."
-                  className="print-hide"
-                  id="s03"
-                >
-                  <TrenchParams state={state} update={updateParams} />
-                </Section>
+            {/* ---------- 02 типы траншеи ---------- */}
+            <div id="sec-trench" className="scroll-mt-24">
+              <Section num="02" title="Типы траншеи" sub="Добавьте способы прокладки — для каждого откроется форма с разрезом и параметрами." className="print-hide">
+                <div className="flex flex-wrap gap-2.5">
+                  {state.types.map((t, i) => {
+                    const m = TRENCH_META[t];
+                    const Icon = TYPE_ICONS[t];
+                    const len = vor.totals.lengthByType[t] ?? 0;
+                    return (
+                      <button
+                        key={t}
+                        onClick={() => openTypeEditor(t, false)}
+                        className="btn group flex items-center gap-3 border border-line rounded-xl bg-surface shadow-card pl-3 pr-4 py-2.5 hover:border-accent/60 hover:bg-accent-soft/60 rowin"
+                        style={{ animationDelay: `${i * 50}ms` }}
+                        title="Открыть параметры"
+                      >
+                        <span className="font-mono text-[11px] font-bold w-6 h-6 flex items-center justify-center rounded-md bg-accent-soft text-accent group-hover:bg-accent group-hover:text-white transition-colors">
+                          {m.letter}
+                        </span>
+                        <span className="text-accent">
+                          <Icon className="w-6 h-6" />
+                        </span>
+                        <span className="text-left">
+                          <span className="block font-display text-[13px] uppercase tracking-wide text-ink leading-tight">{m.label}</span>
+                          <span className="block font-mono text-[10px] text-mut2">{len > 0 ? `${fmtShort(len)} м трассы` : "нет участков"}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                  <button
+                    onClick={() => setModal({ kind: "picker" })}
+                    className="btn flex items-center gap-2 border border-dashed border-line2 rounded-xl px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-mut hover:text-accent hover:border-accent/60 hover:bg-accent-soft/50"
+                  >
+                    <IconPlus className="w-4 h-4" /> добавить тип прокладки
+                  </button>
+                </div>
+                {state.types.length === 0 && (
+                  <p className="mt-3 text-xs text-danger flex items-center gap-2">
+                    <IconShield className="w-4 h-4" /> Добавьте хотя бы один тип прокладки — без него ведомость не формируется.
+                  </p>
+                )}
+              </Section>
+            </div>
 
-                {/* ---------- 04 участки ---------- */}
-                <Section
-                  num="04"
-                  title="Участки трассы"
-                  sub="Точки, длины и глубина в начале/конце участка. H ср. и объемы пересчитываются сразу. Позже — загрузка полилинии из DXF."
-                  className="print-hide"
-                  id="s04"
-                >
-                  <SegmentsTable
-                    state={state}
-                    calcs={vor.calcs}
-                    onUpdate={updateSegment}
-                    onAdd={addSegment}
-                    onRemove={removeSegment}
-                  />
-                </Section>
+            {/* ---------- 03 параметры ---------- */}
+            <div id="sec-params" className="scroll-mt-24">
+              <Section num="03" title="Параметры траншей" sub="Схема разреза по каждому типу с геометрическими параметрами. «Изменить» — редактировать, корзина — удалить." className="print-hide">
+                <TrenchTypeCards
+                  state={state}
+                  cables={cablesPerSegment}
+                  onEdit={(t) => openTypeEditor(t, false)}
+                  onDelete={deleteType}
+                />
+              </Section>
+            </div>
 
-                {/* ---------- 05 ведомость ---------- */}
-                <Section num="05" title="Ведомость (ВОР)" sub="Итоговый документ — в Excel или на печать." hideHeaderOnPrint id="s05">
+            {/* ---------- 04 участки ---------- */}
+            <div id="sec-segments" className="scroll-mt-24">
+              <Section num="04" title="Участки трассы" sub="Точки, длины, глубины и покрытие по каждому участку. Вставка — между строками, H ср. и объемы считаются сразу." className="print-hide">
+                <SegmentsTable
+                  state={state}
+                  calcs={vor.calcs}
+                  onUpdate={updateSegment}
+                  onInsert={insertSegment}
+                  onRemove={removeSegment}
+                  onOpenSurfaces={() => setModal({ kind: "surfaces" })}
+                />
+              </Section>
+            </div>
+
+            {/* ---------- 05 ведомость ---------- */}
+            <div id="sec-vor" className="scroll-mt-24">
+              <Section num="05" title="Ведомость (ВОР)" sub="Итоговый документ — в Excel или на печать." hideHeaderOnPrint>
+                <div ref={revealSheet} className="reveal">
                   <div ref={sheetRef}>
                     <VorSheet state={state} vor={vor} />
                   </div>
-                  <div className="no-print mt-4 text-xs text-mut leading-relaxed bg-raise border border-line rounded-lg px-4 py-3">
-                    <span className="font-bold uppercase tracking-wider text-[10px] text-mut2">Методика · </span>
-                    V траншеи = B · H<sub>ср</sub> · L; при H<sub>ср</sub> &gt; 1,5 м — откосы k = 1,15. Лотки и
-                    плиты — Серия 3.006.1-2.87 (лоток 0,59 м, плита 1,19 м). ПЗК — 4 шт/м на кабель. Фиксаторы
-                    труб — шаг 1,5 м. Засыпка песком/ПГС поверх конструкций t = 10 см. ГНБ: V = π·D²/4 · L.
+                  <div className="no-print mt-4 text-[11px] text-mut2 leading-relaxed border border-dashed border-line2 rounded-lg px-4 py-3 bg-surface/60">
+                    <span className="text-mut font-semibold uppercase tracking-wider text-[10px]">Методика · </span>
+                    V траншеи = B · H<sub>ср</sub> · L; при H<sub>ср</sub> &gt; 1,5 м — откосы k = 1,15.
+                    Лотки и плиты — Серия 3.006.1-2. ПЗК — 4 шт/м на кабель. Фиксаторы труб — шаг 1,5 м.
+                    Засыпка песком/ПГС поверх конструкций t = 10 см. ГНБ: V = π·D²/4 · L, D до 1000 мм.
+                    Благоустройство — разработка и восстановление каждого слоя покрытия.
                   </div>
-                </Section>
-              </div>
-
-              {/* ================= sticky preview ================= */}
-              <aside className="no-print hidden xl:block">
-                <VorPreview
-                  state={state}
-                  vor={vor}
-                  onExport={() => exportVorExcel(state, vor)}
-                  onPrint={() => window.print()}
-                />
-              </aside>
+                </div>
+              </Section>
             </div>
-          </main>
-        </div>
+          </div>
 
-        {/* mobile export bar */}
-        <div className="no-print xl:hidden sticky bottom-0 z-40 border-t border-line bg-surface/95 backdrop-blur px-4 py-3 flex gap-3">
-          <BtnPrimary
-            onClick={() => exportVorExcel(state, vor)}
-            disabled={vor.rows.length === 0}
-            className="flex-1 h-11"
-          >
-            <IconDownload /> Скачать Excel
-          </BtnPrimary>
-          <BtnGhost onClick={() => window.print()} className="flex-1 h-11">
-            <IconPrint /> Печать
-          </BtnGhost>
-        </div>
+          {/* ================= sticky preview ================= */}
+          <aside className="no-print hidden xl:block">
+            <VorPreview
+              state={state}
+              vor={vor}
+              onExport={() => exportVorExcel(state, vor)}
+              onPrint={() => window.print()}
+            />
+          </aside>
+        </main>
       </div>
+
+      {/* mobile export bar */}
+      <div className="no-print xl:hidden sticky bottom-0 z-40 border-t border-line bg-surface/95 backdrop-blur px-4 py-3 flex gap-3">
+        <button
+          onClick={() => exportVorExcel(state, vor)}
+          disabled={vor.rows.length === 0}
+          className="btn flex-1 flex items-center justify-center gap-2 bg-accent text-white font-semibold text-sm rounded-lg px-4 py-3 hover:bg-accent-deep disabled:opacity-40 shadow-sm"
+        >
+          Скачать Excel
+        </button>
+        <button
+          onClick={() => window.print()}
+          className="btn flex-1 flex items-center justify-center gap-2 border border-line2 rounded-lg text-mut font-medium text-sm px-4 py-3 hover:text-accent hover:border-accent/60"
+        >
+          Печать
+        </button>
+      </div>
+
+      {/* ================= modals ================= */}
+      {modal?.kind === "picker" && (
+        <Modal
+          title="Добавить тип прокладки"
+          sub="Выберите способ — откроется форма с разрезом и параметрами"
+          onClose={() => setModal(null)}
+        >
+          <TypePickerList added={state.types} onPick={(t) => openTypeEditor(t, true)} />
+        </Modal>
+      )}
+
+      {modal?.kind === "type" && modalType && draft && (
+        <Modal
+          title={`${modal.isNew ? "Новый тип" : "Параметры"}: ${TRENCH_META[modalType].label}`}
+          sub="Разрез обновляется по мере ввода параметров"
+          onClose={() => setModal(null)}
+          wide
+          footer={
+            <>
+              <button onClick={() => setModal(null)} className="btn text-sm font-medium text-mut border border-line rounded-md px-4 py-2 hover:bg-well">
+                Отмена
+              </button>
+              <button onClick={saveTypeEditor} className="btn text-sm font-semibold text-white bg-accent rounded-md px-5 py-2 hover:bg-accent-deep shadow-sm">
+                {modal.isNew ? "Добавить тип" : "Сохранить"}
+              </button>
+            </>
+          }
+        >
+          <div className="border border-line rounded-lg bg-well/70 mb-4 overflow-hidden">
+            <TrenchDiagram type={modalType} params={{ ...state.params, [modalType]: draft }} cables={cablesPerSegment} />
+          </div>
+          <TrenchTypeForm
+            type={modalType}
+            value={draft}
+            onChange={(v) => setDraft(v as ParamsMap[TrenchType])}
+          />
+        </Modal>
+      )}
+
+      {modal?.kind === "surfaces" && (
+        <SurfacesModal
+          surfaces={state.surfaces}
+          segments={state.segments}
+          onSave={(surfaces) => {
+            setState((s) => ({ ...s, surfaces }));
+            setModal(null);
+          }}
+          onClose={() => setModal(null)}
+        />
+      )}
     </div>
   );
 }
+
+const fmtShort = (n: number) =>
+  n.toLocaleString("ru-RU", { maximumFractionDigits: n >= 100 ? 0 : 1 }).replace(/\u00a0/g, " ");

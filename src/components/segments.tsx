@@ -1,221 +1,226 @@
+import type { SegmentCalc } from "../lib/calc";
+import { fmt } from "../lib/calc";
 import { TRENCH_META } from "../data/catalogs";
-import { fmt, segLabel, type SegmentCalc } from "../lib/calc";
-import type { ProjectState, Segment, TrenchType } from "../lib/types";
-import { FlashValue, IconPlus, IconTrash, IconWarn, NumInput, Panel, Sel } from "./ui";
+import type { ProjectState, Segment } from "../lib/types";
+import {
+  FlashValue,
+  IconPlus,
+  IconTrash,
+  IconWarn,
+  NumInput,
+  Panel,
+} from "./ui";
 
-const TH =
-  "px-3 py-2.5 text-[11px] font-bold uppercase tracking-[0.08em] text-mut whitespace-nowrap";
-const TD = "px-3 py-2.5 align-middle";
+const cell = "px-2 py-2 align-middle";
+
+function InsertRow({ onInsert }: { onInsert: () => void }) {
+  return (
+    <tr className="group/ins">
+      <td colSpan={10} className="p-0">
+        <button
+          onClick={onInsert}
+          className="btn w-full flex items-center gap-2 px-3 py-[3px] text-[10px] font-semibold uppercase tracking-[0.14em] text-mut2 opacity-45 group-hover/ins:opacity-100 hover:!text-accent transition-all"
+        >
+          <span className="flex-1 border-t border-dashed border-line2 group-hover/ins:border-accent/50" />
+          <IconPlus className="w-3 h-3" /> вставить участок
+          <span className="flex-1 border-t border-dashed border-line2 group-hover/ins:border-accent/50" />
+        </button>
+      </td>
+    </tr>
+  );
+}
 
 export function SegmentsTable({
   state,
   calcs,
   onUpdate,
-  onAdd,
+  onInsert,
   onRemove,
+  onOpenSurfaces,
 }: {
   state: ProjectState;
   calcs: SegmentCalc[];
   onUpdate: (id: string, part: Partial<Segment>) => void;
-  onAdd: () => void;
+  onInsert: (index: number) => void;
   onRemove: (id: string) => void;
+  onOpenSurfaces: () => void;
 }) {
-  const { segments, types } = state;
-  const activeTypes = types;
-  const typeOptions = activeTypes.map((t) => ({
-    value: t,
-    label: `${TRENCH_META[t].letter}) ${TRENCH_META[t].short}`,
-  }));
-  const maxH = Math.max(1, ...segments.map((s) => Math.max(s.h1, s.h2)));
+  const activeTypes = state.types;
+  const totalL = calcs.reduce((s, c) => s + (c.active ? c.seg.length : 0), 0);
+  const totalE = calcs.reduce((s, c) => s + c.excavation, 0);
+  const totalC = calcs.reduce((s, c) => s + c.cable, 0);
 
-  const sum = {
-    L: 0,
-    V: 0,
-    cable: 0,
-  };
-  for (const c of calcs) {
-    if (!c.active) continue;
-    sum.L += c.seg.length;
-    sum.V += c.excavation;
-    sum.cable += c.cable;
-  }
+  const thCls =
+    "px-2 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-mut whitespace-nowrap";
 
   return (
     <Panel className="overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-line bg-raise">
+        <span className="text-[11px] text-mut">
+          Участков: <b className="font-mono text-ink">{state.segments.length}</b>
+          {activeTypes.length === 0 && (
+            <span className="ml-2 inline-flex items-center gap-1 text-danger">
+              <IconWarn className="w-3.5 h-3.5" /> нет активных типов прокладки
+            </span>
+          )}
+        </span>
+        <button
+          onClick={onOpenSurfaces}
+          className="btn text-[11px] font-semibold text-accent border border-line2 rounded-md px-2.5 py-1.5 hover:bg-accent-soft hover:border-accent/50"
+        >
+          Типы покрытий…
+        </button>
+      </div>
+
       <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse min-w-[860px]">
+        <table className="w-full text-sm border-collapse min-w-[980px]">
           <thead>
-            <tr className="bg-raise border-b border-line text-left">
-              <th className={TH}>Участок</th>
-              <th className={TH}>Тип траншеи</th>
-              <th className={`${TH} text-right`}>L, м</th>
-              <th className={`${TH} text-right`}>H₁, м</th>
-              <th className={`${TH} text-right`}>H₂, м</th>
-              <th className={TH}>Профиль</th>
-              <th className={`${TH} text-right`}>H ср.</th>
-              <th className={`${TH} text-right`}>Земля, м³</th>
-              <th className={`${TH} text-right`}>Кабель, м</th>
-              <th className={`${TH} w-10`}> </th>
+            <tr className="border-b border-line bg-raise text-mut">
+              <th className={`${thCls} pl-4`}>Точки</th>
+              <th className={thCls}>Тип прокладки</th>
+              <th className={`${thCls} text-right`}>L, м</th>
+              <th className={`${thCls} text-right`}>H1, м</th>
+              <th className={`${thCls} text-right`}>H2, м</th>
+              <th className={thCls}>Покрытие</th>
+              <th className={`${thCls} text-right`}>H ср., м</th>
+              <th className={`${thCls} text-right`}>Земля, м³</th>
+              <th className={`${thCls} text-right`}>Кабель, м</th>
+              <th className={`${thCls} w-10`} />
             </tr>
           </thead>
           <tbody>
-            {segments.length === 0 && (
-              <tr>
-                <td colSpan={10} className="px-4 py-10 text-center text-mut">
-                  Участков пока нет — добавьте первый ниже.
-                </td>
-              </tr>
-            )}
-            {segments.map((s, i) => {
-              const c = calcs[i];
+            <InsertRow onInsert={() => onInsert(0)} />
+            {state.segments.map((s, idx) => {
+              const c = calcs[idx];
               const inactive = !c.active;
               return (
-                <tr
-                  key={s.id}
-                  className={`rowin border-b border-line transition-colors ${
-                    inactive
-                      ? "bg-warn-soft/60"
-                      : "hover:bg-accent-soft/40"
-                  }`}
-                >
-                  <td className={TD}>
-                    <div className="flex items-center gap-1.5 font-mono font-semibold text-ink">
-                      <input
-                        value={s.from}
-                        onChange={(e) => onUpdate(s.id, { from: e.target.value })}
-                        className="w-11 h-9 text-center bg-surface border border-line rounded-md font-mono text-sm font-bold text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/10"
-                        aria-label="Точка от"
-                      />
-                      <span className="text-mut2">–</span>
-                      <input
-                        value={s.to}
-                        onChange={(e) => onUpdate(s.id, { to: e.target.value })}
-                        className="w-11 h-9 text-center bg-surface border border-line rounded-md font-mono text-sm font-bold text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/10"
-                        aria-label="Точка до"
-                      />
-                    </div>
-                  </td>
-                  <td className={TD}>
-                    <Sel
-                      value={s.type}
-                      onChange={(v) => onUpdate(s.id, { type: v as TrenchType })}
-                      options={typeOptions}
-                      className="min-w-[170px]"
-                    />
-                  </td>
-                  <td className={`${TD} text-right`}>
-                    <NumInput
-                      value={s.length}
-                      onChange={(n) => onUpdate(s.id, { length: n })}
-                      step={1}
-                      className="w-24 inline-block"
-                    />
-                  </td>
-                  <td className={`${TD} text-right`}>
-                    <NumInput
-                      value={s.h1}
-                      onChange={(n) => onUpdate(s.id, { h1: n })}
-                      step={0.1}
-                      className="w-24 inline-block"
-                    />
-                  </td>
-                  <td className={`${TD} text-right`}>
-                    <NumInput
-                      value={s.h2}
-                      onChange={(n) => onUpdate(s.id, { h2: n })}
-                      step={0.1}
-                      className="w-24 inline-block"
-                    />
-                  </td>
-                  <td className={TD}>
-                    <div
-                      className="w-16 h-8 border border-line rounded-md bg-surface overflow-hidden"
-                      title={`Глубина ${fmt(s.h1)} → ${fmt(s.h2)} м`}
-                    >
-                      <svg viewBox="0 0 64 32" className="w-full h-full block">
-                        <rect width="64" height="32" fill="var(--color-raise)" />
-                        <path d="M0 4h64" stroke="var(--color-line2)" strokeWidth="1" />
-                        <path
-                          d={`M0 ${(s.h1 / maxH) * 22 + 6} L64 ${(s.h2 / maxH) * 22 + 6} L64 32 L0 32 Z`}
-                          fill={inactive ? "rgba(217,119,6,0.15)" : "rgba(37,99,235,0.16)"}
+                <FragmentRow key={s.id}>
+                  <tr
+                    className={`border-b border-line/70 transition-colors hover:bg-accent-soft/40 ${
+                      inactive ? "opacity-50" : ""
+                    }`}
+                  >
+                    <td className={`${cell} pl-4`}>
+                      <div className="flex items-center gap-1.5 font-mono text-xs">
+                        <input
+                          value={s.from}
+                          onChange={(e) => onUpdate(s.id, { from: e.target.value })}
+                          className="w-11 bg-well border border-line rounded px-1.5 py-1 text-center text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
                         />
-                        <path
-                          d={`M0 ${(s.h1 / maxH) * 22 + 6} L64 ${(s.h2 / maxH) * 22 + 6}`}
-                          stroke={inactive ? "var(--color-warn)" : "var(--color-accent)"}
-                          strokeWidth="1.6"
+                        <span className="text-mut2">–</span>
+                        <input
+                          value={s.to}
+                          onChange={(e) => onUpdate(s.id, { to: e.target.value })}
+                          className="w-11 bg-well border border-line rounded px-1.5 py-1 text-center text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
                         />
-                      </svg>
-                    </div>
-                  </td>
-                  <td className={`${TD} text-right font-mono font-semibold ${inactive ? "text-mut2" : "text-accent-deep"}`}>
-                    <FlashValue value={c.hAvg} />
-                  </td>
-                  <td className={`${TD} text-right font-mono font-bold ${inactive ? "text-mut2" : "text-ink"}`}>
-                    <FlashValue value={c.excavation} />
-                  </td>
-                  <td className={`${TD} text-right font-mono ${inactive ? "text-mut2" : "text-body"}`}>
-                    <FlashValue value={c.cable} decimals={0} />
-                  </td>
-                  <td className={TD}>
-                    <button
-                      type="button"
-                      onClick={() => onRemove(s.id)}
-                      className="btn p-2 rounded-lg text-mut2 hover:text-danger hover:bg-danger-soft"
-                      title="Удалить участок"
-                    >
-                      <IconTrash />
-                    </button>
-                  </td>
-                </tr>
+                      </div>
+                    </td>
+                    <td className={cell}>
+                      <div className="relative">
+                        <select
+                          value={s.type}
+                          onChange={(e) =>
+                            onUpdate(s.id, { type: e.target.value as Segment["type"] })
+                          }
+                          className="w-full bg-well border border-line rounded-md px-2.5 py-1.5 pr-8 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/25 appearance-none cursor-pointer"
+                        >
+                          {activeTypes.map((t) => (
+                            <option key={t} value={t}>
+                              {TRENCH_META[t].letter}) {TRENCH_META[t].label}
+                            </option>
+                          ))}
+                          {!activeTypes.includes(s.type) && (
+                            <option value={s.type}>{TRENCH_META[s.type].label} — выключен</option>
+                          )}
+                        </select>
+                        <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-mut2">
+                          <path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        {inactive && (
+                          <span className="absolute -top-1.5 -right-1.5 w-2 h-2 rounded-full bg-danger" title="Тип прокладки не активен" />
+                        )}
+                      </div>
+                    </td>
+                    <td className={`${cell} text-right`}>
+                      <NumInput value={s.length} onChange={(n) => onUpdate(s.id, { length: n })} step={1} className="w-20 ml-auto" />
+                    </td>
+                    <td className={`${cell} text-right`}>
+                      <NumInput value={s.h1} onChange={(n) => onUpdate(s.id, { h1: n })} step={0.1} className="w-20 ml-auto" />
+                    </td>
+                    <td className={`${cell} text-right`}>
+                      <NumInput value={s.h2} onChange={(n) => onUpdate(s.id, { h2: n })} step={0.1} className="w-20 ml-auto" />
+                    </td>
+                    <td className={cell}>
+                      {s.type === "gnb" ? (
+                        <span className="text-[10px] text-mut2 italic" title="ГНБ — прокладка без вскрытия покрытия">
+                          без вскрытия
+                        </span>
+                      ) : (
+                        <div className="relative">
+                          <select
+                            value={s.surfaceId}
+                            onChange={(e) => onUpdate(s.id, { surfaceId: e.target.value })}
+                            className="w-full bg-well border border-line rounded-md px-2.5 py-1.5 pr-8 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/25 appearance-none cursor-pointer"
+                          >
+                            {state.surfaces.map((sf) => (
+                              <option key={sf.id} value={sf.id}>
+                                {sf.name}
+                              </option>
+                            ))}
+                          </select>
+                          <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-mut2">
+                            <path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </div>
+                      )}
+                    </td>
+                    <td className={`${cell} text-right font-mono text-xs text-mut2`}>{fmt(c.hAvg)}</td>
+                    <td className={`${cell} text-right font-mono text-xs font-semibold ${c.excavation > 0 ? "text-accent-deep" : "text-mut2"}`}>
+                      <FlashValue value={c.excavation} />
+                    </td>
+                    <td className={`${cell} text-right font-mono text-xs font-semibold ${c.cable > 0 ? "text-ink" : "text-mut2"}`}>
+                      <FlashValue value={c.cable} decimals={0} />
+                    </td>
+                    <td className={`${cell} pr-3`}>
+                      <button
+                        onClick={() => onRemove(s.id)}
+                        className="btn p-1.5 rounded-md text-mut2 hover:text-danger hover:bg-danger-soft"
+                        title="Удалить участок"
+                      >
+                        <IconTrash />
+                      </button>
+                    </td>
+                  </tr>
+                  <tr className="border-b border-line/70 md:hidden">
+                    <td colSpan={10} className="px-4 pb-2 text-[11px] text-mut2">{c.note}</td>
+                  </tr>
+                  <InsertRow onInsert={() => onInsert(idx + 1)} />
+                </FragmentRow>
               );
             })}
           </tbody>
-          {segments.length > 0 && (
-            <tfoot>
-              <tr className="bg-accent-soft/70">
-                <td className={`${TD} font-bold text-accent-deep text-xs uppercase tracking-wide`} colSpan={2}>
-                  Итого по активным участкам
-                </td>
-                <td className={`${TD} text-right font-mono font-extrabold text-accent-deep`}>
-                  <FlashValue value={sum.L} decimals={0} />
-                </td>
-                <td colSpan={4} className={TD} />
-                <td className={`${TD} text-right font-mono font-extrabold text-accent-deep`}>
-                  <FlashValue value={sum.V} />
-                </td>
-                <td className={`${TD} text-right font-mono font-bold text-accent-deep`}>
-                  <FlashValue value={sum.cable} decimals={0} />
-                </td>
-                <td className={TD} />
-              </tr>
-            </tfoot>
-          )}
+          <tfoot>
+            <tr className="bg-raise font-mono text-xs text-ink">
+              <td className="px-4 py-2.5 font-sans font-semibold uppercase tracking-wider text-[10px] text-mut" colSpan={2}>
+                Итого по активным участкам
+              </td>
+              <td className="px-2 py-2.5 text-right font-semibold"><FlashValue value={totalL} decimals={0} /></td>
+              <td colSpan={4} className="px-2 py-2.5" />
+              <td className="px-2 py-2.5 text-right font-semibold text-accent-deep"><FlashValue value={totalE} decimals={1} /></td>
+              <td className="px-2 py-2.5 text-right font-semibold"><FlashValue value={totalC} decimals={0} /></td>
+              <td />
+            </tr>
+          </tfoot>
         </table>
       </div>
-
-      {segments.some((s) => !state.types.includes(s.type)) && (
-        <div className="flex items-center gap-2.5 px-4 py-3 border-t border-line bg-warn-soft text-warn text-xs font-medium">
-          <IconWarn className="w-4 h-4 shrink-0" />
-          Участок «{segLabel(segments.find((s) => !state.types.includes(s.type))!)}» использует
-          отключенный тип траншеи и исключен из ведомости.
-        </div>
-      )}
-
-      <div className="p-3 border-t border-line bg-surface">
-        <button
-          type="button"
-          onClick={onAdd}
-          disabled={activeTypes.length === 0}
-          className="btn w-full flex items-center justify-center gap-2 border border-dashed border-line2 rounded-lg py-2.5 text-xs font-bold uppercase tracking-wide text-mut hover:text-accent hover:border-accent/60 hover:bg-accent-soft/50 disabled:opacity-40 disabled:pointer-events-none"
-        >
-          <IconPlus className="w-4 h-4" /> Добавить участок
-        </button>
-        {activeTypes.length === 0 && (
-          <p className="mt-2 text-center text-[11px] text-mut2">
-            Сначала выберите типы траншей в разделе 02
-          </p>
-        )}
-      </div>
+      <p className="px-4 py-2.5 border-t border-line text-[11px] text-mut2">
+        Вставка — наведите на разделитель между строками. Для ГНБ благоустройство не считается:
+        прокладка без вскрытия покрытия. Земли и кабель пересчитываются сразу.
+      </p>
     </Panel>
   );
+}
+
+function FragmentRow({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
 }
