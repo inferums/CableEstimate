@@ -1,27 +1,37 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "IBM Plex Sans", "Segoe UI", sans-serif;
-  --font-display: "Russo One", "IBM Plex Sans", sans-serif;
-  --font-mono: "IBM Plex Mono", "Consolas", monospace;
+  --color-bg: #f4f4f5;
+  --color-page: #f9f9f9;
+  --color-surface: #ffffff;
+  --color-raise: #f9f9f9;
+  --color-well: #f2f2f3;
+  --color-line: #e4e4e7;
+  --color-line2: #d4d4d8;
+  --color-ink: #18181b;
+  --color-body: #3f3f46;
+  --color-mut: #71717a;
+  --color-mut2: #a1a1aa;
 
-  --color-ink: #0b1220;
-  --color-deep: #080e1a;
-  --color-panel: #101b30;
-  --color-panel2: #0d1729;
-  --color-raise: #16233e;
-  --color-line: #233452;
-  --color-line2: #2e4266;
-  --color-paper: #f3f5f8;
-  --color-paperink: #1a2437;
-  --color-amber: #f5a524;
-  --color-amber2: #ffc65c;
-  --color-cyan: #5cc0e8;
-  --color-cyan2: #9adcf5;
-  --color-ok: #5bd08f;
-  --color-danger: #ff6b5e;
-  --color-mut: #8fa3c4;
-  --color-mut2: #647ba3;
+  --color-accent: #2563eb;
+  --color-accent2: #337bf0;
+  --color-accent-deep: #1d4ed8;
+  --color-accent-soft: #eff6ff;
+  --color-accent-100: #dbeafe;
+
+  --color-ok: #16a34a;
+  --color-ok-soft: #f0fdf4;
+  --color-danger: #dc2626;
+  --color-danger-soft: #fef2f2;
+  --color-warn: #d97706;
+  --color-warn-soft: #fffbeb;
+
+  --font-display: "Tektur", "Golos Text", sans-serif;
+  --font-sans: "Golos Text", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --shadow-card: 0 1px 2px rgba(24, 24, 27, 0.04), 0 4px 16px -8px rgba(24, 24, 27, 0.08);
+  --shadow-pop: 0 12px 32px -12px rgba(37, 99, 235, 0.25), 0 2px 8px rgba(24, 24, 27, 0.06);
 }
 
 html {
@@ -29,83 +39,93 @@ html {
 }
 
 body {
-  background-color: var(--color-ink);
-  color: #dbe6f5;
+  background-color: var(--color-page);
+  color: var(--color-body);
   font-family: var(--font-sans);
-  min-height: 100vh;
-  background-image:
-    radial-gradient(1100px 520px at 85% -10%, rgba(92, 192, 232, 0.07), transparent 60%),
-    radial-gradient(900px 500px at -10% 30%, rgba(245, 165, 36, 0.05), transparent 55%),
-    linear-gradient(rgba(92, 140, 210, 0.055) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(92, 140, 210, 0.055) 1px, transparent 1px),
-    linear-gradient(rgba(92, 140, 210, 0.028) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(92, 140, 210, 0.028) 1px, transparent 1px);
-  background-size: auto, auto, 120px 120px, 120px 120px, 24px 24px, 24px 24px;
-  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background: rgba(245, 165, 36, 0.35);
+  background: var(--color-accent);
   color: #fff;
 }
 
-/* ---------- scrollbars ---------- */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #2e4266 transparent;
-}
-*::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-*::-webkit-scrollbar-thumb {
-  background: #2e4266;
-  border-radius: 8px;
-}
-*::-webkit-scrollbar-track {
-  background: transparent;
+/* ---------- ambient layered background ---------- */
+.ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(900px 480px at 85% -10%, rgba(37, 99, 235, 0.07), transparent 60%),
+    radial-gradient(700px 420px at -10% 30%, rgba(51, 123, 240, 0.05), transparent 55%),
+    linear-gradient(rgba(24, 24, 27, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(24, 24, 27, 0.028) 1px, transparent 1px);
+  background-size: auto, auto, 36px 36px, 36px 36px;
+  mask-image: linear-gradient(to bottom, #000 0%, #000 70%, transparent 100%);
 }
 
-/* ---------- reveal on scroll ---------- */
+/* ---------- scroll reveal ---------- */
 .reveal {
   opacity: 0;
-  transform: translateY(22px);
+  transform: translateY(16px);
   transition:
-    opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1),
-    transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+    opacity 0.65s cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 0.65s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 .reveal.revealed {
   opacity: 1;
   transform: none;
 }
-@media (prefers-reduced-motion: reduce) {
-  .reveal {
-    opacity: 1;
-    transform: none;
-    transition: none;
-  }
-}
 
 /* ---------- value flash on change ---------- */
 @keyframes vflash {
   0% {
-    color: var(--color-amber2);
-    text-shadow: 0 0 14px rgba(245, 165, 36, 0.55);
+    background: rgba(37, 99, 235, 0.18);
+    color: var(--color-accent-deep);
   }
   100% {
-    color: inherit;
-    text-shadow: none;
+    background: transparent;
   }
 }
 .vflash {
   animation: vflash 0.7s ease-out;
+  border-radius: 4px;
+  padding: 0 3px;
+  margin: 0 -3px;
 }
 
-/* ---------- row entrance ---------- */
+/* ---------- living elements ---------- */
+@keyframes pulsedot {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.45);
+  }
+  60% {
+    box-shadow: 0 0 0 6px rgba(22, 163, 74, 0);
+  }
+}
+.pulse-dot {
+  animation: pulsedot 1.8s ease-out infinite;
+}
+
+@keyframes cableflow {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -240;
+  }
+}
+.cableflow {
+  stroke-dasharray: 10 14;
+  animation: cableflow 7s linear infinite;
+}
+
 @keyframes rowin {
   from {
     opacity: 0;
-    transform: translateX(-10px);
+    transform: translateX(-8px);
   }
   to {
     opacity: 1;
@@ -113,60 +133,27 @@ body {
   }
 }
 .rowin {
-  animation: rowin 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+  animation: rowin 0.35s ease-out both;
 }
 
-/* ---------- status dot pulse ---------- */
-@keyframes pulse-dot {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(91, 208, 143, 0.5);
+@keyframes barfill {
+  from {
+    transform: scaleX(0);
   }
-  60% {
-    box-shadow: 0 0 0 7px rgba(91, 208, 143, 0);
-  }
-}
-.pulse-dot {
-  animation: pulse-dot 1.8s ease-out infinite;
-}
-
-/* ---------- animated cable dash ---------- */
-@keyframes cableflow {
   to {
-    stroke-dashoffset: -240;
+    transform: scaleX(1);
   }
 }
-.cableflow {
-  stroke-dasharray: 10 14;
-  animation: cableflow 9s linear infinite;
+.barfill {
+  transform-origin: left center;
+  animation: barfill 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
-/* ---------- drawing-sheet corner ticks ---------- */
-.corners {
-  position: relative;
+/* ---------- controls ---------- */
+input,
+select {
+  font-family: inherit;
 }
-.corners::before,
-.corners::after {
-  content: "";
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  pointer-events: none;
-}
-.corners::before {
-  top: -1px;
-  left: -1px;
-  border-top: 2px solid var(--color-amber);
-  border-left: 2px solid var(--color-amber);
-}
-.corners::after {
-  bottom: -1px;
-  right: -1px;
-  border-bottom: 2px solid var(--color-amber);
-  border-right: 2px solid var(--color-amber);
-}
-
-/* ---------- form controls ---------- */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;
@@ -177,38 +164,53 @@ input[type="number"] {
   appearance: textfield;
 }
 
-select {
+select.sel {
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23f5a524' stroke-width='1.6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none'%3E%3Cpath d='m4 6 4 4 4-4' stroke='%2371717A' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 10px center;
 }
 
-/* ---------- buttons ---------- */
 .btn {
-  transition:
-    transform 0.15s ease,
-    box-shadow 0.2s ease,
-    background-color 0.2s ease,
-    border-color 0.2s ease,
-    color 0.2s ease;
-}
-.btn:hover {
-  transform: translateY(-1px);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.16s ease;
 }
 .btn:active {
   transform: translateY(1px) scale(0.99);
 }
 
-/* ---------- print ---------- */
+/* ---------- scrollbars ---------- */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: #d4d4d8;
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #a1a1aa;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+/* ---------- paper sheet (print target) ---------- */
 @page {
-  margin: 12mm;
+  size: A4;
+  margin: 10mm;
 }
 @media print {
   body {
     background: #fff !important;
-    color: #000 !important;
-    background-image: none !important;
+  }
+  .ambient {
+    display: none !important;
   }
   .no-print,
   .print-hide {
@@ -220,12 +222,13 @@ select {
     transition: none !important;
   }
   .print-sheet {
-    display: block !important;
-    color: #111 !important;
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+  }
+  section {
     border: none !important;
     box-shadow: none !important;
-  }
-  .print-sheet table {
-    color: #111 !important;
+    border-radius: 0 !important;
   }
 }
