@@ -8,11 +8,15 @@ import {
   TYPE_ICONS,
 } from "./components/params";
 import {
+  BtnGhost,
+  BtnPrimary,
   FlashValue,
   IconBolt,
   IconDoc,
+  IconDownload,
   IconLayers,
   IconPlus,
+  IconPrint,
   IconRoute,
   IconShield,
   IconSliders,
@@ -23,7 +27,7 @@ import {
   Section,
   useReveal,
 } from "./components/ui";
-import { VorPreview, VorSheet } from "./components/vor";
+import { VorSheet } from "./components/vor";
 import { SurfacesModal } from "./components/surfaces";
 import { TrenchDiagram } from "./components/diagrams";
 import { DEFAULT_SURFACES, TRENCH_META, VOLTAGE_META } from "./data/catalogs";
@@ -263,7 +267,7 @@ export default function App() {
         </aside>
 
         {/* ================= main ================= */}
-        <main className="flex-1 min-w-0 px-4 lg:px-8 py-7 grid xl:grid-cols-[minmax(0,1fr)_370px] gap-8 items-start">
+        <main className="flex-1 min-w-0 px-4 lg:px-8 py-7">
           <div className="space-y-10 min-w-0">
             {/* ---------- 01 объект ---------- */}
             <div id="sec-object" className="scroll-mt-24">
@@ -416,7 +420,22 @@ export default function App() {
 
             {/* ---------- 05 ведомость ---------- */}
             <div id="sec-vor" className="scroll-mt-24">
-              <Section num="05" title="Ведомость (ВОР)" sub="Итоговый документ — в Excel или на печать." hideHeaderOnPrint>
+              <Section
+                num="05"
+                title="Ведомость (ВОР)"
+                sub="Итоговый документ — в Excel или на печать."
+                hideHeaderOnPrint
+                actions={
+                  <>
+                    <BtnPrimary onClick={() => exportVorExcel(state, vor)} disabled={vor.rows.length === 0}>
+                      <IconDownload /> В Excel
+                    </BtnPrimary>
+                    <BtnGhost onClick={() => window.print()}>
+                      <IconPrint /> Печать
+                    </BtnGhost>
+                  </>
+                }
+              >
                 <div ref={revealSheet} className="reveal">
                   <div ref={sheetRef}>
                     <VorSheet state={state} vor={vor} />
@@ -433,33 +452,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* ================= sticky preview ================= */}
-          <aside className="no-print hidden xl:block">
-            <VorPreview
-              state={state}
-              vor={vor}
-              onExport={() => exportVorExcel(state, vor)}
-              onPrint={() => window.print()}
-            />
-          </aside>
         </main>
-      </div>
-
-      {/* mobile export bar */}
-      <div className="no-print xl:hidden sticky bottom-0 z-40 border-t border-line bg-surface/95 backdrop-blur px-4 py-3 flex gap-3">
-        <button
-          onClick={() => exportVorExcel(state, vor)}
-          disabled={vor.rows.length === 0}
-          className="btn flex-1 flex items-center justify-center gap-2 bg-accent text-white font-semibold text-sm rounded-lg px-4 py-3 hover:bg-accent-deep disabled:opacity-40 shadow-sm"
-        >
-          Скачать Excel
-        </button>
-        <button
-          onClick={() => window.print()}
-          className="btn flex-1 flex items-center justify-center gap-2 border border-line2 rounded-lg text-mut font-medium text-sm px-4 py-3 hover:text-accent hover:border-accent/60"
-        >
-          Печать
-        </button>
       </div>
 
       {/* ================= modals ================= */}

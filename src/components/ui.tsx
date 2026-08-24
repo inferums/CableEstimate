@@ -37,7 +37,7 @@ export function Modal({
     >
       <div
         className={`modal-card bg-surface border border-line rounded-xl shadow-pop w-full ${
-          wide ? "max-w-3xl" : "max-w-xl"
+          wide ? "max-w-5xl" : "max-w-xl"
         } my-auto`}
       >
         <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-line">
@@ -141,6 +141,7 @@ export function Section({
   className = "",
   hideHeaderOnPrint = false,
   id,
+  actions,
 }: {
   num: string;
   title: string;
@@ -149,13 +150,14 @@ export function Section({
   className?: string;
   hideHeaderOnPrint?: boolean;
   id?: string;
+  actions?: ReactNode;
 }) {
   const hdr = hideHeaderOnPrint ? "print-hide" : "";
   return (
     <Reveal className={className}>
       <section id={id} className="bg-surface border border-line rounded-xl shadow-card scroll-mt-24">
         <div className={`px-5 sm:px-6 pt-5 ${hdr}`}>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <span className="font-mono text-[11px] font-bold text-accent bg-accent-soft border border-accent-100 rounded-md px-2 py-1 leading-none">
               {num}
             </span>
@@ -163,6 +165,7 @@ export function Section({
               {title}
             </h2>
             <span className="hidden sm:block flex-1 border-t border-dashed border-line" />
+            {actions && <div className="flex items-center gap-2 no-print">{actions}</div>}
           </div>
           {sub && <p className="mt-2 text-[13px] text-mut leading-relaxed">{sub}</p>}
         </div>
