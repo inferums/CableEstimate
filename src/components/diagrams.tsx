@@ -100,8 +100,8 @@ function Defs({ sand, gravel, conc }: { sand: string; gravel: string; conc: stri
   );
 }
 
-const Txt = ({ x, y, t, anchor = "start", fill = MUT }: { x: number; y: number; t: string; anchor?: "start" | "middle" | "end"; fill?: string }) => (
-  <text x={x} y={y} textAnchor={anchor} fontSize="8" fontFamily="JetBrains Mono, monospace" fill={fill}>
+const Txt = ({ x, y, t, anchor = "start", fill = MUT, size = 8, bold = false }: { x: number; y: number; t: string; anchor?: "start" | "middle" | "end"; fill?: string; size?: number; bold?: boolean }) => (
+  <text x={x} y={y} textAnchor={anchor} fontSize={size} fontWeight={bold ? 700 : 400} fontFamily="JetBrains Mono, monospace" fill={fill}>
     {t}
   </text>
 );
@@ -389,15 +389,17 @@ export function SurfaceDiagram({ surface, className = "" }: { surface: Surface; 
   const layers = surface.layers.filter((l) => l.thickness > 0);
   const total = layers.reduce((s, l) => s + l.thickness, 0) || 1;
   const H = 150;
-  let y = 26;
+  let y = 34;
   const boxes = layers.map((l, i) => {
-    const h = Math.max(16, (l.thickness / total) * H);
+    const h = Math.max(22, (l.thickness / total) * H);
     const b = { l, y, h, i };
     y += h;
     return b;
   });
+  const bx = 48;
+  const bw = 190;
   return (
-    <svg viewBox="0 0 320 220" className={`w-full h-auto select-none ${className}`}>
+    <svg viewBox="0 0 430 268" className={`w-full h-auto select-none ${className}`}>
       <defs>
         {layers.map((l, i) => patternFor(l.name, `${base}${i}`))}
         <pattern id={`${base}soil`} width="14" height="14" patternUnits="userSpaceOnUse">
@@ -405,23 +407,26 @@ export function SurfaceDiagram({ surface, className = "" }: { surface: Surface; 
           <circle cx="10" cy="9" r="0.6" fill="#D4D4D8" />
         </pattern>
       </defs>
-      <line x1={14} y1={26} x2={306} y2={26} stroke={INK} strokeWidth="1.3" />
-      <Txt x={14} y={18} t={`«${surface.name}»`} fill={ACC} />
+      <line x1={14} y1={34} x2={416} y2={34} stroke={INK} strokeWidth="1.4" />
+      <Txt x={14} y={22} t={`Разрез: «${surface.name}»`} fill={ACC} size={13} bold />
+      <Txt x={416} y={22} t={`Σ ${(total / 100).toFixed(2).replace(".", ",")} м`} anchor="end" size={11} fill={MUT} />
       {boxes.map(({ l, y: by, h, i }) => (
         <g key={i}>
-          <rect x={40} y={by} width={150} height={h} fill={`url(#${base}${i})`} stroke={INK} strokeWidth="1" />
-          <rect x={40} y={by} width={150} height={h} fill="#fff" opacity="0.25" />
-          <line x1={190} y1={by + h / 2} x2={200} y2={by + h / 2} stroke={MUT} strokeWidth="0.7" />
-          <Txt x={204} y={by + h / 2 + 3} t={l.name} />
-          <text x={304} y={by + h / 2 + 3} textAnchor="end" fontSize="8.5" fontFamily="JetBrains Mono, monospace" fontWeight="600" fill={ACC}>
+          <rect x={bx} y={by} width={bw} height={h} fill={`url(#${base}${i})`} stroke={INK} strokeWidth="1" />
+          <rect x={bx} y={by} width={bw} height={h} fill="#fff" opacity="0.25" />
+          <line x1={bx + bw} y1={by + h / 2} x2={bx + bw + 10} y2={by + h / 2} stroke={MUT} strokeWidth="0.8" />
+          <Txt x={bx + bw + 14} y={by + h / 2 + 4} t={l.name} size={11.5} />
+          <text x={416} y={by + h / 2 + 4} textAnchor="end" fontSize="12.5" fontFamily="JetBrains Mono, monospace" fontWeight="700" fill={ACC}>
             {Math.round(l.thickness)} см
           </text>
           {/* размерная скобка */}
-          <line x1={33} y1={by + 2} x2={33} y2={by + h - 2} stroke={ACC} strokeWidth="0.8" />
+          <line x1={bx - 8} y1={by + 2} x2={bx - 8} y2={by + h - 2} stroke={ACC} strokeWidth="1" />
+          <line x1={bx - 11} y1={by + 2} x2={bx - 5} y2={by + 2} stroke={ACC} strokeWidth="0.8" />
+          <line x1={bx - 11} y1={by + h - 2} x2={bx - 5} y2={by + h - 2} stroke={ACC} strokeWidth="0.8" />
         </g>
       ))}
-      <rect x={40} y={y} width={150} height={26} fill={`url(#${base}soil)`} stroke={INK} strokeWidth="1" strokeDasharray="3 2" />
-      <Txt x={204} y={y + 16} t="земляное полотно" />
+      <rect x={bx} y={y} width={bw} height={30} fill={`url(#${base}soil)`} stroke={INK} strokeWidth="1" strokeDasharray="3 2" />
+      <Txt x={bx + bw + 14} y={y + 19} t="земляное полотно" size={10.5} fill={MUT} />
     </svg>
   );
 }
