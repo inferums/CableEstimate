@@ -1,6 +1,7 @@
 import { useId } from "react";
 import { PLATES, PZK, TRAYS } from "../data/catalogs";
 import type { ParamsMap, Surface, TrenchType } from "../lib/types";
+import { DxfViewer } from "./DxfViewer";
 
 /* инженерные разрезы по типам прокладки + разрезы покрытий */
 
@@ -223,51 +224,27 @@ function BlockDiagram({ p }: { p: ParamsMap["block"] }) {
   );
 }
 
-/* =========================== лотки =========================== */
+/* =========================== лотки (DXF) =========================== */
 function LotokDiagram({ p, cables }: { p: ParamsMap["lotok"]; cables: number }) {
-  const sand = uid("sand");
-  const conc = uid("conc");
   const tray = TRAYS.find((t) => t.mark === p.trayMark) ?? TRAYS[0];
   const plate = PLATES.find((t) => t.mark === p.plateMark) ?? PLATES[0];
-  const t = Trench(Math.max(p.width, (tray.innerW + 240) / 1000));
-  const hb = clamp(p.bedding * 220, 8, 24);
-  const bedTop = 158 - hb;
-  const sc = 0.135;
-  const iw = tray.innerW * sc;
-  const ih = Math.min(tray.innerH * sc, 66);
-  const wall = 10;
-  const ow = iw + wall * 2;
-  const oh = ih + wall + 8;
-  const tx1 = 168 - ow / 2;
-  const ty1 = bedTop - oh;
-  const pw = ow + 26;
-  const ph = Math.max(8, 160 * sc);
-  const showCables = Math.min(cables, 6);
+
+  const annotations = [
+    { x: 23, y: 4.5, label: `Лоток: ${tray.mark}`, color: ACC },
+    { x: 23, y: 7.5, label: `${tray.innerW}×${tray.innerH} мм`, color: MUT },
+    { x: 23, y: 10, label: `Плита: ${plate.mark}`, color: ACC },
+    { x: 23, y: 12.5, label: `B=${p.width.toFixed(2).replace(".", ",")} м`, color: ACC },
+    { x: 23, y: 15, label: `Подсыпка: ${p.beddingType === "sand" ? "песок" : "ПГС"} ${Math.round(p.bedding * 100)} см`, color: MUT },
+    { x: 23, y: 17.5, label: `Кабелей: ${cables} шт`, color: ACC },
+  ];
+
   return (
-    <svg viewBox="0 0 340 200" className="w-full h-auto select-none">
-      <Defs sand={sand} gravel={sand + "g"} conc={conc} />
-      <Ground y={42} soilId={sand + "-soil"} />
-      {t.el}
-      <rect x={t.x1b + 3} y={bedTop} width={t.wb - 6} height={hb} fill={`url(#${sand})`} stroke={MUT} strokeWidth="0.7" />
-      {/* лоток */}
-      <rect x={tx1} y={ty1} width={ow} height={oh} fill={`url(#${conc})`} stroke={INK} strokeWidth="1.1" />
-      <rect x={tx1 + wall} y={ty1} width={iw} height={ih} fill="#fff" stroke={INK} strokeWidth="1" />
-      {/* плита */}
-      <rect x={168 - pw / 2} y={ty1 - ph} width={pw} height={ph} fill={`url(#${conc})`} stroke={INK} strokeWidth="1.1" />
-      {/* кабели */}
-      {Array.from({ length: showCables }, (_, i) => {
-        const gap = iw / (showCables + 1);
-        return <circle key={i} cx={tx1 + wall + gap * (i + 1)} cy={ty1 + ih - 6} r={3.4} fill="#fff" stroke={ACC} strokeWidth="1" />;
-      })}
-      <DimH x1={tx1 + wall} x2={tx1 + wall + iw} y={ty1 + ih + 12} label={`${tray.innerW}`} />
-      <DimH x1={t.x1t} x2={t.x2t} y={26} label={`B=${Math.max(p.width, (tray.innerW + 240) / 1000).toFixed(2).replace(".", ",")} м`} />
-      <DimV x={318} y1={42} y2={158} label="H" />
-      <line x1={168 + pw / 2 - 4} y1={ty1 - ph / 2} x2={252} y2={ty1 - ph - 8} stroke={MUT} strokeWidth="0.7" />
-      <Txt x={255} y={ty1 - ph - 10} t={`${plate.mark}`} fill={ACC} />
-      <Txt x={168} y={194} t={`${tray.mark} · Сер. 3.006.1-2`} anchor="middle" fill={ACC} />
-      <line x1={t.x1b + 2} y1={bedTop + hb / 2} x2={52} y2={176} stroke={MUT} strokeWidth="0.7" />
-      <Txt x={48} y={184} t={`t=${Math.round(p.bedding * 100)} см`} />
-    </svg>
+    <div className="relative">
+      <DxfViewer url="/lotok.dxf" annotations={annotations} />
+      <div className="absolute bottom-1 right-2 font-mono text-[9px] text-mut2 opacity-70">
+        Сер. 3.006.1-2
+      </div>
+    </div>
   );
 }
 

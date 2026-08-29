@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SegmentsTable } from "./components/segments";
 import {
   defaultParamsFor,
@@ -20,6 +20,7 @@ import {
   IconRoute,
   IconShield,
   IconSliders,
+  IconUpload,
   Logo,
   Modal,
   NumInput,
@@ -33,6 +34,7 @@ import { TrenchDiagram } from "./components/diagrams";
 import { DEFAULT_SURFACES, TRENCH_META, VOLTAGE_META } from "./data/catalogs";
 import { buildVor } from "./lib/calc";
 import { exportVorExcel } from "./lib/excel";
+import { exportJsonFile, importJsonFile, loadFromLocal, saveToLocal } from "./lib/storage";
 import type {
   ParamsMap,
   ProjectState,
@@ -50,7 +52,7 @@ const VOLT_BIG: Record<VoltageClass, string> = {
   "110-220": "110–220",
 };
 
-function initialState(): ProjectState {
+function defaultState(): ProjectState {
   return {
     projectName: "Реконструкция КЛ 10 кВ от ПС «Заречная»",
     projectCode: "24-07-КЛ",
@@ -74,6 +76,10 @@ function initialState(): ProjectState {
     ],
     surfaces: DEFAULT_SURFACES,
   };
+}
+
+function initialState(): ProjectState {
+  return loadFromLocal() ?? defaultState();
 }
 
 type ModalState =
@@ -103,6 +109,31 @@ export default function App() {
 
   const meta = VOLTAGE_META[state.voltage];
   const cablesPerSegment = state.chains * meta.cablesPerChain;
+
+  /* -------- автосохранение в localStorage -------- */
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => saveToLocal(state), 400);
+    return () => clearTimeout(saveTimer.current);
+  }, [state]);
+
+  /* -------- импорт JSON-файла -------- */
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const handleImport = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    importJsonFile(file)
+      .then((loaded) => {
+        setState(loaded);
+        saveToLocal(loaded);
+      })
+      .catch((err: Error) => alert(`Ошибка импорта: ${err.message}`));
+    e.target.value = "";
+  }, []);
 
   /* -------- навигация + scrollspy -------- */
   const go = (id: string) => {
@@ -175,6 +206,17 @@ export default function App() {
   const removeSegment = (id: string) =>
     setState((s) => ({ ...s, segments: s.segments.filter((x) => x.id !== id) }));
 
+  const reorderSegments = (fromId: string, toId: string) =>
+    setState((s) => {
+      const oldIdx = s.segments.findIndex((x) => x.id === fromId);
+      const newIdx = s.segments.findIndex((x) => x.id === toId);
+      if (oldIdx < 0 || newIdx < 0) return s;
+      const segments = [...s.segments];
+      const [moved] = segments.splice(oldIdx, 1);
+      segments.splice(newIdx, 0, moved);
+      return { ...s, segments };
+    });
+
   const modalType = modal?.kind === "type" ? modal.type : null;
 
   return (
@@ -195,17 +237,42 @@ export default function App() {
               </div>
             </div>
           </div>
-          <div className="hidden md:flex items-center gap-5 font-mono text-[11px] uppercase tracking-wider text-mut">
-            <span>
-              уч. <b className="text-accent">{vor.totals.activeSegments}</b>
-            </span>
-            <span>
-              поз. <b className="text-accent">{vor.totals.rows}</b>
-            </span>
-            <span className="flex items-center gap-1.5 text-ok">
-              <span className="w-1.5 h-1.5 rounded-full bg-ok pulse-dot" />
-              расчет активен
-            </span>
+          <div className="flex items-center gap-3">
+            <div className="hidden md:flex items-center gap-5 font-mono text-[11px] uppercase tracking-wider text-mut">
+              <span>
+                уч. <b className="text-accent">{vor.totals.activeSegments}</b>
+              </span>
+              <span>
+                поз. <b className="text-accent">{vor.totals.rows}</b>
+              </span>
+              <span className="flex items-center gap-1.5 text-ok">
+                <span className="w-1.5 h-1.5 rounded-full bg-ok pulse-dot" />
+                сохранено
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 border-l border-line pl-3 ml-1">
+              <button
+                onClick={() => exportJsonFile(state)}
+                className="btn text-[11px] font-semibold text-mut hover:text-accent px-2 py-1.5 rounded-md hover:bg-accent-soft/60 transition-colors"
+                title="Сохранить проект в JSON-файл"
+              >
+                <IconDownload className="w-3.5 h-3.5 inline-block mr-1" />JSON
+              </button>
+              <button
+                onClick={handleImport}
+                className="btn text-[11px] font-semibold text-mut hover:text-accent px-2 py-1.5 rounded-md hover:bg-accent-soft/60 transition-colors"
+                title="Загрузить проект из JSON-файла"
+              >
+                <IconUpload className="w-3.5 h-3.5 inline-block mr-1" />Открыть
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </div>
           </div>
         </div>
       </header>
@@ -413,6 +480,7 @@ export default function App() {
                   onUpdate={updateSegment}
                   onInsert={insertSegment}
                   onRemove={removeSegment}
+                  onReorder={reorderSegments}
                   onOpenSurfaces={() => setModal({ kind: "surfaces" })}
                 />
               </Section>
