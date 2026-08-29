@@ -1,7 +1,6 @@
 import { useId } from "react";
 import { PLATES, PZK, TRAYS } from "../data/catalogs";
 import type { ParamsMap, Surface, TrenchType } from "../lib/types";
-import { DxfViewer } from "./DxfViewer";
 
 /* инженерные разрезы по типам прокладки + разрезы покрытий */
 
@@ -224,27 +223,145 @@ function BlockDiagram({ p }: { p: ParamsMap["block"] }) {
   );
 }
 
-/* =========================== лотки (DXF) =========================== */
+/* =========================== лотки (процедурный SVG) =========================== */
 function LotokDiagram({ p, cables }: { p: ParamsMap["lotok"]; cables: number }) {
   const tray = TRAYS.find((t) => t.mark === p.trayMark) ?? TRAYS[0];
   const plate = PLATES.find((t) => t.mark === p.plateMark) ?? PLATES[0];
 
-  const annotations = [
-    { x: 23, y: 4.5, label: `Лоток: ${tray.mark}`, color: ACC },
-    { x: 23, y: 7.5, label: `${tray.innerW}×${tray.innerH} мм`, color: MUT },
-    { x: 23, y: 10, label: `Плита: ${plate.mark}`, color: ACC },
-    { x: 23, y: 12.5, label: `B=${p.width.toFixed(2).replace(".", ",")} м`, color: ACC },
-    { x: 23, y: 15, label: `Подсыпка: ${p.beddingType === "sand" ? "песок" : "ПГС"} ${Math.round(p.bedding * 100)} см`, color: MUT },
-    { x: 23, y: 17.5, label: `Кабелей: ${cables} шт`, color: ACC },
-  ];
+  // Реальные размеры в мм
+  const B_mm = Math.max(p.width * 1000, tray.innerW + 240); // ширина траншеи, мм
+  const H_total = 2200; // общая глубина от поверхности, мм
+  const h_top = 100; // от поверхности до сигнальной ленты
+  const h_tape = 100; // от ленты до верха защитной засыпки
+  const h_protect = 70; // толщина защитной засыпки поверх конструкций
+  const h_tray = tray.innerH + 140; // высота лотка (внутр. + стенки)
+  const h_bedding = Math.round(p.bedding * 1000); // толщина постели, мм
+  const trayW = tray.innerW + 140; // внешняя ширина лотка (внутр + 2 стенки по 70)
+  const trayWall = 70; // толщина стенки лотка, мм
+
+  // Масштаб: подгоняем под viewBox
+  const vbW = 420;
+  const vbH = 560;
+  const marginX = 70;
+  const marginY_top = 35;
+  const marginY_bot = 40;
+  const scale = (vbW - 2 * marginX) / B_mm;
+  const trenchPx = B_mm * scale;
+  const x0 = (vbW - trenchPx) / 2; // левый край траншеи
+  const yGround = marginY_top; // поверхность земли
+
+  // Позиции слоёв (в пикселях SVG)
+  const yTape = yGround + h_top * scale;
+  const yProtectTop = yTape + h_tape * scale;
+  const yProtectBot = yProtectTop + h_protect * scale;
+  const yTrayTop = yProtectBot;
+  const yTrayBot = yTrayTop + h_tray * scale;
+  const yBeddingBot = yTrayBot + h_bedding * scale;
+
+  const trayInnerX = x0 + (B_mm - trayW) / 2 * scale;
+  const trayInnerW = trayW * scale - 2 * trayWall * scale;
+  const trayInnerH = (tray.innerH) * scale;
+  const trayWallPx = trayWall * scale;
+
+  const showCables = Math.min(cables, 6);
+  const cableR = Math.max(4, Math.min(8, trayInnerW / (showCables * 3)));
+
+  // Штриховки
+  const soilId = uid("soil");
+  const backfillId = uid("backfill");
+  const protectId = uid("protect");
+  const trayHatchId = uid("trayhatch");
 
   return (
-    <div className="relative">
-      <DxfViewer url="/lotok.dxf" annotations={annotations} />
-      <div className="absolute bottom-1 right-2 font-mono text-[9px] text-mut2 opacity-70">
-        Сер. 3.006.1-2
-      </div>
-    </div>
+    <svg viewBox={`0 0 ${vbW} ${vbH}`} className="w-full h-auto select-none">
+      <defs>
+        {/* грунт (диагональные штрихи) */}
+        <pattern id={soilId} width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="10" stroke="#B0B0B8" strokeWidth="0.8" />
+        </pattern>
+        {/* обратная засыпка (крестики) */}
+        <pattern id={backfillId} width="14" height="14" patternUnits="userSpaceOnUse">
+          <line x1="4" y1="2" x2="10" y2="2" stroke="#888" strokeWidth="0.7" />
+          <line x1="7" y1="0" x2="7" y2="5" stroke="#888" strokeWidth="0.7" />
+          <line x1="4" y1="9" x2="10" y2="9" stroke="#888" strokeWidth="0.7" />
+          <line x1="7" y1="7" x2="7" y2="12" stroke="#888" strokeWidth="0.7" />
+        </pattern>
+        {/* защитная засыпка (точки) */}
+        <pattern id={protectId} width="8" height="8" patternUnits="userSpaceOnUse">
+          <circle cx="2" cy="2" r="0.9" fill="#666" />
+          <circle cx="6" cy="6" r="0.9" fill="#666" />
+          <circle cx="2" cy="6" r="0.5" fill="#999" />
+          <circle cx="6" cy="2" r="0.5" fill="#999" />
+        </pattern>
+        {/* штриховка стенок лотка */}
+        <pattern id={trayHatchId} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="6" stroke="#555" strokeWidth="0.9" />
+        </pattern>
+      </defs>
+
+      {/* === грунт по бокам === */}
+      <rect x={0} y={yGround} width={x0} height={yBeddingBot - yGround} fill={`url(#${soilId})`} opacity="0.4" />
+      <rect x={x0 + trenchPx} y={yGround} width={vbW - x0 - trenchPx} height={yBeddingBot - yGround} fill={`url(#${soilId})`} opacity="0.4" />
+
+      {/* === обратная засыпка (зона выше защитного слоя) === */}
+      <rect x={x0} y={yGround} width={trenchPx} height={yProtectTop - yGround} fill={`url(#${backfillId})`} />
+
+      {/* === сигнальная лента (красная линия) === */}
+      <line x1={x0 + 4} y1={yTape} x2={x0 + trenchPx - 4} y2={yTape} stroke="#DC2626" strokeWidth="2.5" strokeDasharray="8 4" />
+
+      {/* === защитная засыпка поверх конструкций === */}
+      <rect x={x0} y={yProtectTop} width={trenchPx} height={h_protect * scale} fill={`url(#${protectId})`} />
+
+      {/* === постель (подсыпка под лоток) === */}
+      <rect x={x0} y={yTrayBot} width={trenchPx} height={h_bedding * scale} fill={`url(#${protectId})`} />
+
+      {/* === лоток (U-образный) === */}
+      {/* дно лотка */}
+      <rect x={trayInnerX} y={yTrayBot - trayWallPx} width={trayInnerW + 2 * trayWallPx} height={trayWallPx} fill={`url(#${trayHatchId})`} stroke="#333" strokeWidth="0.8" />
+      {/* левая стенка */}
+      <rect x={trayInnerX} y={yTrayTop} width={trayWallPx} height={h_tray * scale} fill={`url(#${trayHatchId})`} stroke="#333" strokeWidth="0.8" />
+      {/* правая стенка */}
+      <rect x={trayInnerX + trayInnerW + trayWallPx} y={yTrayTop} width={trayWallPx} height={h_tray * scale} fill={`url(#${trayHatchId})`} stroke="#333" strokeWidth="0.8" />
+      {/* внутренняя полость лотка */}
+      <rect x={trayInnerX + trayWallPx} y={yTrayTop} width={trayInnerW} height={h_tray * scale} fill="#fff" stroke="#333" strokeWidth="0.6" />
+
+      {/* === кабели внутри лотка === */}
+      {Array.from({ length: showCables }, (_, i) => {
+        const gap = trayInnerW / (showCables + 1);
+        const cx = trayInnerX + trayWallPx + gap * (i + 1);
+        const cy = yTrayBot - trayWallPx - cableR - 4;
+        return (
+          <g key={i}>
+            <circle cx={cx} cy={cy} r={cableR} fill="#fff" stroke="#2563EB" strokeWidth="1.2" />
+            <circle cx={cx} cy={cy} r={cableR * 0.3} fill="#2563EB" opacity="0.5" />
+          </g>
+        );
+      })}
+
+      {/* === поверхность земли (линия + штрихи) === */}
+      <line x1={0} y1={yGround} x2={vbW} y2={yGround} stroke="#333" strokeWidth="1.5" />
+      {Array.from({ length: Math.floor(vbW / 12) }, (_, i) => {
+        const x = i * 12 + 4;
+        return <line key={i} x1={x} y1={yGround} x2={x - 6} y2={yGround + 8} stroke="#888" strokeWidth="0.8" />;
+      })}
+
+      {/* === РАЗМЕРНЫЕ ЛИНИИ === */}
+      {/* Левая: общая глубина 2200 */}
+      <DimV x={18} y1={yGround} y2={yBeddingBot} label={`${H_total}`} side="l" />
+      {/* Правая: послойные размеры */}
+      <DimV x={vbW - 18} y1={yGround} y2={yTape} label={`${h_top}`} side="r" />
+      <DimV x={vbW - 18} y1={yTape} y2={yProtectTop} label={`${h_tape}`} side="r" />
+      <DimV x={vbW - 18} y1={yProtectTop} y2={yProtectBot} label={`${h_protect}`} side="r" />
+      <DimV x={vbW - 18} y1={yTrayTop} y2={yTrayBot} label={`${h_tray}`} side="r" />
+      <DimV x={vbW - 18} y1={yTrayBot} y2={yBeddingBot} label={`${h_bedding}`} side="r" />
+      {/* Нижняя: ширина траншеи */}
+      <DimH x1={x0} x2={x0 + trenchPx} y={yBeddingBot + 18} label={`${Math.round(B_mm)}`} />
+
+      {/* Подпись лотка */}
+      <text x={vbW / 2} y={vbH - 6} textAnchor="middle" fontSize="10" fontFamily="JetBrains Mono, monospace" fill="#2563EB" fontWeight="600">
+        {tray.mark} · {plate.mark} · Сер. 3.006.1-2
+      </text>
+    </svg>
   );
 }
 
