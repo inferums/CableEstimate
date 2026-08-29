@@ -208,7 +208,7 @@ export function NumInput({
         type="number"
         inputMode="decimal"
         step={step}
-        min={min}
+        min={min ?? 0}
         max={max}
         value={text}
         onFocus={() => (focused.current = true)}
@@ -219,7 +219,7 @@ export function NumInput({
         onChange={(e) => {
           setText(e.target.value);
           const n = parseFloat(e.target.value.replace(",", "."));
-          if (Number.isFinite(n)) onChange(n);
+          if (Number.isFinite(n) && n >= 0) onChange(n);
         }}
         className="w-full h-10 bg-raise border border-line rounded-lg pl-3 pr-12 font-mono text-sm font-medium text-ink outline-none transition-all focus:bg-surface focus:border-accent focus:ring-4 focus:ring-accent/10 hover:border-line2"
       />

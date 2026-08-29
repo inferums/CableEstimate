@@ -20,20 +20,27 @@ export interface RawItem {
   qty: number;
 }
 
+export interface Warning {
+  code: string;
+  text: string;
+  severity: "warn" | "error";
+}
+
 export interface SegmentCalc {
   seg: Segment;
   label: string;
   active: boolean;
   hAvg: number;
-  excavation: number; // м³ (для ГНБ — объем выбуренного грунта)
+  excavation: number;
   beddingVol: number;
   topFillVol: number;
   structVol: number;
   backfill: number;
   surplus: number;
-  cable: number; // м
+  cable: number;
   items: RawItem[];
   note: string;
+  warnings: Warning[];
 }
 
 export interface VorResult {
@@ -47,18 +54,33 @@ export interface VorResult {
     rows: number;
     activeSegments: number;
   };
+  warnings: Warning[];
 }
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
 const pipesVolume = (pipes: PipeEntry[], length: number) =>
   pipes.reduce(
     (s, p) => s + (Math.PI / 4) * Math.pow(p.diameter / 1000, 2) * p.count * length,
     0,
   );
+
 const totalPipes = (pipes: PipeEntry[]) => pipes.reduce((s, p) => s + p.count, 0);
+
 const beddingName = (t: "sand" | "pgs") => (t === "sand" ? "песка" : "ПГС");
 
 export const segLabel = (s: Segment) => `${s.from || "?"}–${s.to || "?"}`;
+
+/** Ширина траншеи поверху с учётом откосов */
+function trenchTopWidth(B: number, H: number, m: number): number {
+  return B + 2 * m * H;
+}
+
+/** Объём траншеи по трапеции: V = (B + m·H)·H·L */
+function trenchVolume(B: number, H: number, L: number, m: number): number {
+  return (B + m * H) * H * L;
+}
 
 function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
   const v = VOLTAGE_META[state.voltage];
@@ -67,7 +89,12 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
   const L = Math.max(0, seg.length || 0);
   const hAvg = ((seg.h1 || 0) + (seg.h2 || 0)) / 2;
   const items: RawItem[] = [];
-  const cable = L * state.chains * v.cablesPerChain;
+  const warnings: Warning[] = [];
+
+  // Кабель с запасом на прокладку и разделку
+  const cablePerChain = L * (1 + CALC.cableReserve);
+  const cableEnds = state.chains * v.cablesPerChain * 2; // концы для разделки
+  const cable = cablePerChain * state.chains * v.cablesPerChain + cableEnds * CALC.cableStripLength;
 
   let excavation = 0;
   let beddingVol = 0;
@@ -86,40 +113,79 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
       const p = state.params.gnb;
       const D = p.boreDiameter;
       const Vb = (Math.PI / 4) * Math.pow(D / 1000, 2) * L;
-      excavation = Vb;
-      surplus = Vb;
+
+      // Приямки входа и выхода (2 шт)
+      const pitVol = CALC.gnbPitVolume * 2;
+
       push(1, "Бурение пилотной скважины (ГНБ)", "м", L);
       push(1, `Расширение скважины до Ø${D} мм (ГНБ)`, "м", L);
       push(1, `Разработка грунта механизированным бурением, скважина Ø${D} мм`, "м³", Vb);
-      push(1, "Погрузка и вывоз излишнего грунта автомобилями-самосвалами", "м³", Vb);
+      // Шлам — отдельная позиция с Кшл
+      push(1, "Погрузка и вывоз бурового шлама автомобилями-самосвалами", "м³", round3(Vb * CALC.sludgeFactor));
+      // Приямки
+      push(1, "Разработка грунта в приямках входа и выхода (ГНБ)", "м³", pitVol);
+      push(1, "Обратная засыпка приямков (ГНБ)", "м³", pitVol);
+
       for (const pe of p.pipes) {
         push(2, `Затягивание трубы ПНД Ø${pe.diameter} мм в скважину (ГНБ)`, "м", L * pe.count);
       }
       const spacers = Math.ceil(L / CALC.spacerStep) * totalPipes(p.pipes);
       push(2, "Монтаж дистанционных фиксаторов труб (шаг 1,5 м)", "шт", spacers);
       structVol = pipesVolume(p.pipes, L);
-      note = `скважина Ø${D} мм; труб: ${totalPipes(p.pipes)} шт`;
+
+      excavation = Vb + pitVol;
+      note = `скважина Ø${D} мм; труб: ${totalPipes(p.pipes)} шт; приямки 2 шт`;
+
+      // Предупреждение: перегруз скважины
+      const pipeArea = pipesVolume(p.pipes, 1);
+      const boreArea = (Math.PI / 4) * Math.pow(D / 1000, 2);
+      if (boreArea > 0 && pipeArea / boreArea > 0.7) {
+        warnings.push({
+          code: "gnb-overload",
+          text: `Трубы занимают ${Math.round(pipeArea / boreArea * 100)}% скважины (норма ≤70%)`,
+          severity: "warn",
+        });
+      }
+
+      // Сигнальная лента для ГНБ НЕ укладывается
     } else {
       const p = state.params[seg.type];
       const B = p.width;
-      const k = hAvg > CALC.slopeDepth ? CALC.slopeK : 1;
-      excavation = B * hAvg * L * k;
+      const m = CALC.slopeK; // заложение откосов
+
+      // Предупреждение: глубина меньше ПУЭ 2.3.84
+      if (hAvg < CALC.minDepth) {
+        warnings.push({
+          code: "depth-pue",
+          text: `Глубина ${hAvg.toFixed(1)} м меньше минимальной по ПУЭ 2.3.84 (${CALC.minDepth} м)`,
+          severity: "warn",
+        });
+      }
+
+      // Объём по трапеции
+      excavation = trenchVolume(B, hAvg, L, m);
+      const Btop = trenchTopWidth(B, hAvg, m);
+
       beddingVol = B * p.bedding * L;
       topFillVol = B * CALC.topFill * L;
 
       push(
         1,
-        `Разработка грунта в траншеях (${TRENCH_META[seg.type].short}), экскаватор${
-          k > 1 ? ", с откосами k=1,15" : ""
-        }`,
+        `Разработка грунта в траншеях (${TRENCH_META[seg.type].short}), экскаватор`,
         "м³",
         excavation,
       );
+
+      // Ручная доработка дна (доля от объёма разработки)
+      const handWork = excavation * CALC.handWorkShare;
+      push(1, "Ручная доработка дна траншеи", "м³", handWork);
+
+      // Планировка дна
+      push(1, "Планировка дна траншеи", "м²", round2(B * L));
+
       push(
         1,
-        `Устройство постели из ${beddingName(p.beddingType)} под конструкции, t=${Math.round(
-          p.bedding * 100,
-        )} см`,
+        `Устройство постели из ${beddingName(p.beddingType)} под конструкции, t=${Math.round(p.bedding * 100)} см`,
         "м³",
         beddingVol,
       );
@@ -129,6 +195,10 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
         "м³",
         topFillVol,
       );
+
+      // Закупка песка/ПГС с коэффициентом уплотнения
+      const sandPurchase = (beddingVol + topFillVol) * CALC.compactionFactor;
+      push(1, `Закупка ${beddingName(p.beddingType)} (с учётом уплотнения)`, "м³", round3(sandPurchase));
 
       if (seg.type === "block") {
         const bp = state.params.block;
@@ -147,60 +217,121 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
         const plates = Math.ceil(L / (plate.length / 1000));
         push(2, `Укладка лотков ${tray.mark} по Серии 3.006.1-2`, "шт", trays);
         push(2, `Укладка плит перекрытия ${plate.mark} по Серии 3.006.1-2`, "шт", plates);
-        structVol =
-          (tray.innerW / 1000 + 0.14) * (tray.innerH / 1000 + CALC.wallThk + 0.16) * L;
-        note = `лоток ${tray.mark}; плита ${plate.mark}`;
+        // Объём лотка по фактическим наружным размерам
+        const trayOuterW = (tray.innerW + 2 * CALC.trayWall) / 1000;
+        const trayOuterH = (tray.innerH + CALC.trayBottom + CALC.trayPlateH) / 1000;
+        structVol = trayOuterW * trayOuterH * L;
+        note = `лоток ${tray.mark} (${tray.innerW}×${tray.innerH}); плита ${plate.mark}`;
+
+        // Предупреждение: лоток шире траншеи
+        if (trayOuterW > B) {
+          warnings.push({
+            code: "tray-wide",
+            text: `Лоток (${(trayOuterW * 1000).toFixed(0)} мм) шире траншеи (${(B * 1000).toFixed(0)} мм)`,
+            severity: "error",
+          });
+        }
+        // Предупреждение: глубина меньше высоты лотка
+        if (hAvg < trayOuterH) {
+          warnings.push({
+            code: "tray-deep",
+            text: `Глубина ${hAvg.toFixed(2)} м меньше высоты лотка с плитой ${trayOuterH.toFixed(2)} м`,
+            severity: "warn",
+          });
+        }
       } else if (seg.type === "open") {
         const op = state.params.open;
         if (op.cover === "plates") {
           const plate = PLATES.find((t) => t.mark === op.plateMark) ?? PLATES[0];
           const plates = Math.ceil(L / (plate.length / 1000));
           push(2, `Укладка плит перекрытия ${plate.mark} по Серии 3.006.1-2`, "шт", plates);
+          // Объём плит по каталожной массе / плотность ж/б (2500 кг/м³)
+          structVol = plates * plate.weight * 1000 / 2500;
           note = `защита — плиты ${plate.mark}`;
         } else {
           const rows = state.chains * v.cablesPerChain;
           const pzks = Math.ceil(L / (PZK.length / 1000)) * rows;
           push(2, `Укладка плит защитных кабельных ${PZK.mark} (${PZK.dims})`, "шт", pzks);
-          structVol = rows * L * 0.124 * 0.05;
+          // Объём ПЗК по фактическим размерам
+          structVol = pzks * (PZK.w / 1000) * (PZK.h / 1000) * (PZK.t / 1000);
           note = `защита — ${PZK.mark}, ${rows} ряд(а)`;
         }
       } else {
         // splice — муфтовое поле
-        push(3, `Монтаж соединительной муфты (кабель ${v.label})`, "шт", cable / L);
-        note = `котлован B=${B} м под муфты`;
+        const nCables = state.chains * v.cablesPerChain;
+        push(3, `Монтаж соединительной муфты (кабель ${v.label})`, "шт", nCables);
+        note = `котлован B=${B} м под муфты, ${nCables} каб.`;
       }
 
-      backfill = Math.max(0, excavation - beddingVol - topFillVol - structVol);
-      surplus = Math.min(excavation, beddingVol + topFillVol + structVol);
+      backfill = Math.max(0, excavation - beddingVol - topFillVol - structVol - handWork);
+      // Вывоз с коэффициентом разрыхления
+      surplus = Math.min(excavation, beddingVol + topFillVol + structVol + handWork);
       push(1, "Обратная засыпка траншеи грунтом с послойным уплотнением", "м³", backfill);
-      push(1, "Погрузка и вывоз излишнего грунта автомобилями-самосвалами", "м³", surplus);
+      push(1, "Погрузка и вывоз излишнего грунта автомобилями-самосвалами", "м³", round3(surplus * CALC.soilLoosen));
     }
 
-    push(3, `Прокладка кабеля ${v.label} (${v.cableNote})`, "м", cable);
-    push(3, "Укладка сигнальной ленты «Осторожно кабель»", "м", L * state.chains);
+    // === Общие позиции (все типы прокладки) ===
 
-    /* ---- благоустройство ---- */
+    // Кабель
+    push(3, `Прокладка кабеля ${v.label} (${v.cableNote})`, "м", round3(cable));
+
+    // Сигнальная лента (не для ГНБ)
     if (seg.type !== "gnb") {
-      const surf =
-        state.surfaces.find((s) => s.id === seg.surfaceId) ?? state.surfaces[0];
+      push(3, "Укладка сигнальной ленты «Осторожно кабель»", "м", L * state.chains);
+    }
+
+    // Муфты: соединительные + концевые
+    const nCablesInTrench = state.chains * v.cablesPerChain;
+    if (seg.type === "splice") {
+      // Для муфтового поля — только соединительные (уже добавлены выше)
+    } else {
+      // Концевые муфты: 2 на каждый кабель в траншее
+      const endMufs = nCablesInTrench * 2;
+      push(3, `Монтаж концевых муфт (кабель ${v.label})`, "компл", endMufs);
+    }
+
+    /* ---- благоустройство по бровке + уширение (не для ГНБ) ---- */
+    if (seg.type !== "gnb") {
+      const surf = state.surfaces.find((s) => s.id === seg.surfaceId) ?? state.surfaces[0];
       if (surf && surf.layers.length > 0) {
-        const B = state.params[seg.type].width;
-        const area = B * L;
+        const p = state.params[seg.type];
+        const B = p.width;
+        const m = CALC.slopeK;
+        const Btop = trenchTopWidth(B, hAvg, m);
+        const area = (Btop + 2 * CALC.rehabWiden) * L;
         let waste = 0;
         for (const layer of surf.layers) {
           const t = Math.round(layer.thickness);
-          push(4, `Разработка покрытия «${surf.name}»: ${layer.name} (t=${t} см)`, "м²", area);
-          push(
-            4,
-            `Восстановление покрытия «${surf.name}»: ${layer.name} (t=${t} см)`,
-            "м²",
-            area,
-          );
+          push(4, `Разработка покрытия «${surf.name}»: ${layer.name} (t=${t} см)`, "м²", round2(area));
+          push(4, `Восстановление покрытия «${surf.name}»: ${layer.name} (t=${t} см)`, "м²", round2(area));
           waste += (area * layer.thickness) / 100;
         }
-        push(4, `Погрузка и вывоз отходов от разборки покрытия «${surf.name}»`, "м³", waste);
+        push(4, `Погрузка и вывоз отходов от разборки покрытия «${surf.name}»`, "м³", round3(waste * CALC.soilLoosen));
+      }
+
+      // Предупреждение: участок без покрытия
+      if (!state.surfaces.find((s) => s.id === seg.surfaceId)) {
+        warnings.push({
+          code: "no-surface",
+          text: `Участок ${label}: не выбрано покрытие для благоустройства`,
+          severity: "warn",
+        });
       }
     }
+  } else if (!active && L > 0) {
+    warnings.push({
+      code: "type-disabled",
+      text: `Участок ${label}: тип прокладки «${TRENCH_META[seg.type].label}» отключён`,
+      severity: "warn",
+    });
+  }
+
+  if (L <= 0) {
+    warnings.push({
+      code: "no-length",
+      text: `Участок ${label}: длина не задана`,
+      severity: "error",
+    });
   }
 
   return {
@@ -217,6 +348,7 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
     cable: round3(cable),
     items,
     note,
+    warnings,
   };
 }
 
@@ -244,12 +376,20 @@ export function buildVor(state: ProjectState): VorResult {
     }
   }
 
-  const rows = Array.from(map.values());
+  // Сортировка по разделам и наименованию
+  const rows = Array.from(map.values()).sort((a, b) => {
+    if (a.section !== b.section) return a.section - b.section;
+    return a.name.localeCompare(b.name, "ru");
+  });
+
   const lengthByType: Partial<Record<string, number>> = {};
   for (const c of calcs) {
     if (!c.active) continue;
     lengthByType[c.seg.type] = (lengthByType[c.seg.type] ?? 0) + c.seg.length;
   }
+
+  // Собрать все предупреждения
+  const allWarnings = calcs.flatMap((c) => c.warnings);
 
   return {
     calcs,
@@ -262,6 +402,7 @@ export function buildVor(state: ProjectState): VorResult {
       rows: rows.length,
       activeSegments: calcs.filter((c) => c.active).length,
     },
+    warnings: allWarnings,
   };
 }
 

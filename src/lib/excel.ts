@@ -1,16 +1,16 @@
-import * as XLSX from "xlsx";
 import { TRENCH_META, VOLTAGE_META } from "../data/catalogs";
 import { fmt, segLabel, type VorResult } from "./calc";
 import { VOR_SECTIONS, type ProjectState } from "./types";
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
-export function exportVorExcel(state: ProjectState, vor: VorResult) {
+export async function exportVorExcel(state: ProjectState, vor: VorResult) {
+  const XLSX = await import("xlsx");
   const v = VOLTAGE_META[state.voltage];
   const aoa: (string | number)[][] = [];
 
   // Шапка
-  aoa.push(["ВЕДОМОСТЬ ОБЪЕМОВ ВЫПОЛНЕННЫХ РАБОТ", "", "", "", ""]);
+  aoa.push(["ВЕДОМОСТЬ ОБЪЕМОВ РАБОТ", "", "", "", ""]);
   aoa.push([`Кабельная линия ${v.label}`, "", "", "", ""]);
   aoa.push([`Объект: ${state.projectName || "—"}${state.projectCode ? ` · шифр ${state.projectCode}` : ""}`, "", "", "", ""]);
   aoa.push([
@@ -19,6 +19,7 @@ export function exportVorExcel(state: ProjectState, vor: VorResult) {
       .join(", ") || "—"}`,
     "", "", "", "",
   ]);
+  aoa.push([`Дата формирования: ${new Date().toLocaleDateString("ru-RU")}`, "", "", "", ""]);
   aoa.push([]);
   aoa.push(["№ п/п", "Наименование работ и затрат", "Ед. изм.", "Кол-во", "Примечание"]);
 
@@ -39,6 +40,16 @@ export function exportVorExcel(state: ProjectState, vor: VorResult) {
     `Всего: траншей ${fmt(vor.totals.length, 0)} м · земляные работы ${fmt(vor.totals.earth)} м³ · кабель ${fmt(vor.totals.cable, 0)} м`,
     "", "", "", "",
   ]);
+
+  // Блок предупреждений
+  if (vor.warnings.length > 0) {
+    aoa.push([]);
+    aoa.push(["ПРЕДУПРЕЖДЕНИЯ:", "", "", "", ""]);
+    for (const w of vor.warnings) {
+      aoa.push([w.severity === "error" ? "⛔" : "⚠️", w.text, "", "", ""]);
+    }
+  }
+
   aoa.push([]);
   aoa.push(["Составил: ______________", "", "Проверил: ______________", "", ""]);
 
@@ -49,8 +60,8 @@ export function exportVorExcel(state: ProjectState, vor: VorResult) {
     { s: { r: 1, c: 0 }, e: { r: 1, c: 4 } },
     { s: { r: 2, c: 0 }, e: { r: 2, c: 4 } },
     { s: { r: 3, c: 0 }, e: { r: 3, c: 4 } },
+    { s: { r: 4, c: 0 }, e: { r: 4, c: 4 } },
   ];
-  // объединение строк-разделов
   aoa.forEach((row, i) => {
     if (typeof row[0] === "string" && row[0].startsWith("Раздел")) {
       ws["!merges"]!.push({ s: { r: i, c: 0 }, e: { r: i, c: 4 } });
@@ -88,9 +99,36 @@ export function exportVorExcel(state: ProjectState, vor: VorResult) {
     { wch: 8 }, { wch: 10 }, { wch: 20 }, { wch: 11 }, { wch: 40 },
   ];
 
+  // Лист 3 — исходные данные
+  const dAoa: (string | number)[][] = [
+    ["ПАРАМЕТР", "ЗНАЧЕНИЕ", "", ""],
+    ["Наименование объекта", state.projectName, "", ""],
+    ["Шифр проекта", state.projectCode, "", ""],
+    ["Класс напряжения", v.label, "", ""],
+    ["Цепей в траншее", state.chains, "", ""],
+    ["Типы прокладки", state.types.map((t) => TRENCH_META[t].label).join(", "), "", ""],
+    [],
+    ["УЧАСТОК", "ТИП", "ДЛИНА, м", "H1, м", "H2, м", "ПОКРЫТИЕ"],
+  ];
+  for (const s of state.segments) {
+    const surf = state.surfaces.find((sf) => sf.id === s.surfaceId);
+    dAoa.push([
+      `${s.from}–${s.to}`,
+      TRENCH_META[s.type].label,
+      s.length,
+      s.h1,
+      s.h2,
+      surf?.name ?? "—",
+    ]);
+  }
+
+  const ws3 = XLSX.utils.aoa_to_sheet(dAoa);
+  ws3["!cols"] = [{ wch: 22 }, { wch: 22 }, { wch: 12 }, { wch: 8 }, { wch: 8 }, { wch: 18 }];
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "ВОР");
   XLSX.utils.book_append_sheet(wb, ws2, "Участки");
+  XLSX.utils.book_append_sheet(wb, ws3, "Исходные данные");
 
   const fname = `ВОР_${(state.projectCode || "КЛ").replace(/\s+/g, "_")}_${v.short.replace(/\s+/g, "")}.xlsx`;
   XLSX.writeFile(wb, fname);

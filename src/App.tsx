@@ -28,7 +28,7 @@ import {
   Section,
   useReveal,
 } from "./components/ui";
-import { VorSheet } from "./components/vor";
+import { VorSheet, VorPreview } from "./components/vor";
 import { SurfacesModal } from "./components/surfaces";
 import { TrenchDiagram } from "./components/diagrams";
 import { DEFAULT_SURFACES, TRENCH_META, VOLTAGE_META } from "./data/catalogs";
@@ -278,6 +278,25 @@ export default function App() {
       </header>
 
       <div className="relative z-10 flex max-w-[1560px] mx-auto">
+        {/* ================= warnings banner ================= */}
+        {vor.warnings.length > 0 && (
+          <div className="no-print fixed top-16 left-0 right-0 z-30 bg-warn-soft border-b border-warn/30 px-4 py-2">
+            <div className="max-w-[1560px] mx-auto flex items-start gap-2">
+              <span className="text-warn font-bold text-sm">⚠</span>
+              <div className="flex-1 text-xs text-body">
+                {vor.warnings.slice(0, 3).map((w, i) => (
+                  <span key={i} className={`mr-4 ${w.severity === "error" ? "text-danger font-semibold" : ""}`}>
+                    {w.text}
+                  </span>
+                ))}
+                {vor.warnings.length > 3 && (
+                  <span className="text-mut">…и ещё {vor.warnings.length - 3}</span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ================= sidebar ================= */}
         <aside className="no-print hidden lg:flex flex-col w-[268px] shrink-0 border-r border-line bg-page/70 sticky top-16 h-[calc(100vh-4rem)] px-4 py-5">
           <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-mut2">
@@ -495,7 +514,7 @@ export default function App() {
                 hideHeaderOnPrint
                 actions={
                   <>
-                    <BtnPrimary onClick={() => exportVorExcel(state, vor)} disabled={vor.rows.length === 0}>
+                    <BtnPrimary onClick={async () => { await exportVorExcel(state, vor); }} disabled={vor.rows.length === 0}>
                       <IconDownload /> В Excel
                     </BtnPrimary>
                     <BtnGhost onClick={() => window.print()}>
@@ -504,16 +523,28 @@ export default function App() {
                   </>
                 }
               >
-                <div ref={revealSheet} className="reveal">
-                  <div ref={sheetRef}>
-                    <VorSheet state={state} vor={vor} />
+                <div className="grid lg:grid-cols-[1fr_340px] gap-5">
+                  <div ref={revealSheet} className="reveal">
+                    <div ref={sheetRef}>
+                      <VorSheet state={state} vor={vor} />
+                    </div>
+                    <div className="no-print mt-4 text-[11px] text-mut2 leading-relaxed border border-dashed border-line2 rounded-lg px-4 py-3 bg-surface/60">
+                      <span className="text-mut font-semibold uppercase tracking-wider text-[10px]">Методика · </span>
+                      V траншеи = (B + m·Hср)·Hср·L, m = 0,5 по СП 45.13330.
+                      Лотки и плиты — Серия 3.006.1-2. ПЗК — по фактическим размерам 250×124×50 мм.
+                      Фиксаторы труб — шаг 1,5 м. Засыпка песком/ПГС поверх конструкций t = 10 см.
+                      ГНБ: V = π·D²/4 · L + приямки 2 шт. Шлам — отдельная позиция с Кшл=1,3.
+                      Кабель: запас 2% на прокладку + 3 м на разделку. Вывоз грунта — с Кр=1,2.
+                      Благоустройство — по бровке с уширением 0,15 м.
+                    </div>
                   </div>
-                  <div className="no-print mt-4 text-[11px] text-mut2 leading-relaxed border border-dashed border-line2 rounded-lg px-4 py-3 bg-surface/60">
-                    <span className="text-mut font-semibold uppercase tracking-wider text-[10px]">Методика · </span>
-                    V траншеи = B · H<sub>ср</sub> · L; при H<sub>ср</sub> &gt; 1,5 м — откосы k = 1,15.
-                    Лотки и плиты — Серия 3.006.1-2. ПЗК — 4 шт/м на кабель. Фиксаторы труб — шаг 1,5 м.
-                    Засыпка песком/ПГС поверх конструкций t = 10 см. ГНБ: V = π·D²/4 · L, D до 1000 мм.
-                    Благоустройство — разработка и восстановление каждого слоя покрытия.
+                  <div className="no-print">
+                    <VorPreview
+                      state={state}
+                      vor={vor}
+                      onExport={async () => { await exportVorExcel(state, vor); }}
+                      onPrint={() => window.print()}
+                    />
                   </div>
                 </div>
               </Section>
