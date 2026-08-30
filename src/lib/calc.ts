@@ -87,12 +87,14 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
   const label = segLabel(seg);
   const active = state.types.includes(seg.type);
   const L = Math.max(0, seg.length || 0);
+  // Наклонная длина кабеля (по данным съёмки) — если есть
+  const Lcable = seg.slopeLength ? Math.max(0, seg.slopeLength) : L;
   const hAvg = ((seg.h1 || 0) + (seg.h2 || 0)) / 2;
   const items: RawItem[] = [];
   const warnings: Warning[] = [];
 
-  // Кабель с запасом на прокладку и разделку
-  const cablePerChain = L * (1 + CALC.cableReserve);
+  // Кабель с запасом на прокладку и разделку — по наклонной длине
+  const cablePerChain = Lcable * (1 + CALC.cableReserve);
   const cableEnds = state.chains * v.cablesPerChain * 2; // концы для разделки
   const cable = cablePerChain * state.chains * v.cablesPerChain + cableEnds * CALC.cableStripLength;
 

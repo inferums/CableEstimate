@@ -56,10 +56,34 @@ export interface Segment {
   from: string;
   to: string;
   type: TrenchType;
-  length: number; // м
+  length: number; // м (горизонтальное проложение)
   h1: number; // глубина в точке 1, м
   h2: number; // глубина в точке 2, м
   surfaceId: string; // покрытие для благоустройства
+  slopeLength?: number; // наклонная длина (по данным съёмки), м
+  groundElev1?: number; // отметка земли в начале, м
+  groundElev2?: number; // отметка земли в конце, м
+  designLength?: number; // проектная длина, м
+  designH1?: number; // проектная глубина в начале, м
+  designH2?: number; // проектная глубина в конце, м
+}
+
+/** Метаданные исполнительной съёмки */
+export interface SurveyMeta {
+  date: string;
+  surveyor: string;
+  fileName: string;
+}
+
+/** Марка кабеля в кабельном журнале */
+export interface CableSpec {
+  id: string;
+  mark: string;
+  crossSection: string;
+  voltage: string;
+  from: string;
+  to: string;
+  designLength: number;
 }
 
 export interface ProjectState {
@@ -71,6 +95,8 @@ export interface ProjectState {
   params: ParamsMap;
   segments: Segment[];
   surfaces: Surface[];
+  surveyMeta?: SurveyMeta;
+  cableJournal?: CableSpec[];
 }
 
 export interface VorRow {

@@ -30,10 +30,14 @@ import {
 } from "./components/ui";
 import { VorSheet, VorPreview } from "./components/vor";
 import { SurfacesModal } from "./components/surfaces";
+import { SurveyImportWizard } from "./components/survey-wizard";
+import { PlanView, ProfileView } from "./components/route-viz";
+import { ComparisonTable } from "./components/comparison";
 import { TrenchDiagram } from "./components/diagrams";
 import { DEFAULT_SURFACES, TRENCH_META, VOLTAGE_META } from "./data/catalogs";
 import { buildVor } from "./lib/calc";
 import { exportVorExcel } from "./lib/excel";
+import { downloadDxf } from "./lib/dxf-export";
 import { exportJsonFile, importJsonFile, loadFromLocal, saveToLocal } from "./lib/storage";
 import type {
   ParamsMap,
@@ -86,6 +90,7 @@ type ModalState =
   | { kind: "picker" }
   | { kind: "type"; type: TrenchType; isNew: boolean }
   | { kind: "surfaces" }
+  | { kind: "survey" }
   | null;
 
 const NAV = [
@@ -93,7 +98,9 @@ const NAV = [
   { id: "sec-trench", num: "02", label: "Типы траншеи", Icon: IconLayers },
   { id: "sec-params", num: "03", label: "Параметры", Icon: IconSliders },
   { id: "sec-segments", num: "04", label: "Участки трассы", Icon: IconRoute },
-  { id: "sec-vor", num: "05", label: "Ведомость", Icon: IconDoc },
+  { id: "sec-viz", num: "05", label: "Трасса на плане", Icon: IconRoute },
+  { id: "sec-compare", num: "06", label: "Проект — факт", Icon: IconShield },
+  { id: "sec-vor", num: "07", label: "Ведомость", Icon: IconDoc },
 ];
 
 export default function App() {
@@ -252,6 +259,13 @@ export default function App() {
             </div>
             <div className="flex items-center gap-1.5 border-l border-line pl-3 ml-1">
               <button
+                onClick={() => setModal({ kind: "survey" })}
+                className="btn text-[11px] font-semibold text-mut hover:text-accent px-2 py-1.5 rounded-md hover:bg-accent-soft/60 transition-colors"
+                title="Импорт точек геодезической съёмки (CSV, Excel)"
+              >
+                <IconRoute className="w-3.5 h-3.5 inline-block mr-1" />Съёмка
+              </button>
+              <button
                 onClick={() => exportJsonFile(state)}
                 className="btn text-[11px] font-semibold text-mut hover:text-accent px-2 py-1.5 rounded-md hover:bg-accent-soft/60 transition-colors"
                 title="Сохранить проект в JSON-файл"
@@ -348,6 +362,22 @@ export default function App() {
                   </div>
                 ))}
               </div>
+              {state.surveyMeta && (
+                <div className="mt-2.5 pt-2.5 border-t border-line">
+                  <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-ok flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-ok" />
+                    съёмка импортирована
+                  </div>
+                  <div className="mt-1 text-[10px] text-mut leading-relaxed">
+                    {state.surveyMeta.fileName && (
+                      <span className="font-mono text-accent-deep">{state.surveyMeta.fileName}</span>
+                    )}
+                    {state.surveyMeta.date && (
+                      <span className="ml-1.5">от {state.surveyMeta.date}</span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </aside>
@@ -505,10 +535,30 @@ export default function App() {
               </Section>
             </div>
 
-            {/* ---------- 05 ведомость ---------- */}
+            {/* ---------- 05 трасса на плане ---------- */}
+            <div id="sec-viz" className="scroll-mt-24">
+              <Section num="05" title="Трасса на плане" sub="Схема трассы (вид сверху) и продольный профиль с отметками земли, дна траншеи и кабеля." className="print-hide">
+                <div className="space-y-5">
+                  <PlanView state={state} />
+                  <ProfileView state={state} />
+                </div>
+              </Section>
+            </div>
+
+            {/* ---------- 06 проект — факт ---------- */}
+            <div id="sec-compare" className="scroll-mt-24">
+              <Section num="06" title="Проект — факт" sub="Сравнение фактических параметров с проектом из рабочей документации. Отклонения длины и глубины." className="print-hide">
+                <ComparisonTable
+                  state={state}
+                  onUpdate={updateSegment}
+                />
+              </Section>
+            </div>
+
+            {/* ---------- 07 ведомость ---------- */}
             <div id="sec-vor" className="scroll-mt-24">
               <Section
-                num="05"
+                num="07"
                 title="Ведомость (ВОР)"
                 sub="Итоговый документ — в Excel или на печать."
                 hideHeaderOnPrint
@@ -517,6 +567,9 @@ export default function App() {
                     <BtnPrimary onClick={async () => { await exportVorExcel(state, vor); }} disabled={vor.rows.length === 0}>
                       <IconDownload /> В Excel
                     </BtnPrimary>
+                    <BtnGhost onClick={() => downloadDxf(state)}>
+                      <IconDownload /> DXF
+                    </BtnGhost>
                     <BtnGhost onClick={() => window.print()}>
                       <IconPrint /> Печать
                     </BtnGhost>
@@ -602,6 +655,20 @@ export default function App() {
             setModal(null);
           }}
           onClose={() => setModal(null)}
+        />
+      )}
+
+      {modal?.kind === "survey" && (
+        <SurveyImportWizard
+          surfaces={state.surfaces}
+          onClose={() => setModal(null)}
+          onImport={({ segments, surveyMeta }) => {
+            setState((s) => ({
+              ...s,
+              segments: [...s.segments, ...segments],
+              surveyMeta,
+            }));
+          }}
         />
       )}
     </div>
