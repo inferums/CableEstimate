@@ -223,56 +223,58 @@ function BlockDiagram({ p }: { p: ParamsMap["block"] }) {
   );
 }
 
-/* =========================== лотки (по Схема_в_лотке.svg) =========================== */
+/* =========================== лотки (по Схема_в_лотке.png) =========================== */
 function LotokDiagram({ p, cables }: { p: ParamsMap["lotok"]; cables: number }) {
   const tray = TRAYS.find((t) => t.mark === p.trayMark) ?? TRAYS[0];
   const plate = PLATES.find((t) => t.mark === p.plateMark) ?? PLATES[0];
 
+  /* Масштаб: реальные мм → SVG пиксели */
   const s = 0.22;
-  const B = Math.max(p.width * 1000, tray.innerW + 240);
-  const cx = 300;
-  const xL = cx - (B * s) / 2;
-  const xR = cx + (B * s) / 2;
-  const dimX = 22;
+  const B = Math.max(p.width * 1000, tray.innerW + 240); // ширина траншеи, мм
+  const cx = 300;                                         // центр по X
+  const xL = cx - (B * s) / 2;                           // левая стенка траншеи
+  const xR = cx + (B * s) / 2;                           // правая стенка траншеи
+  const dimX = 22;                                        // отступ для размерных линий слева
 
-  /* Вертикальные координаты (сверху вниз) */
-  const yG = 30;                                       // поверхность земли
-  const yTape = yG + 100 * s;                          // сигнальная лента
-  const yBackfillBot = yTape + 33 * s;                 // низ обратной засыпки
-  const yPGS = yBackfillBot + 63 * s;                  // низ ПГС
-  const yTrayBot = yPGS + 20 * s;                      // дно лотка (верхняя плита, y=712 в SVG)
-  const yFlange = yTrayBot + (tray.innerH + 140) * s;  // полки лотка (y=535 в SVG)
-  const yPlate = yFlange + 16 * s;                     // плита перекрытия
-  const yEnd = yPlate + 14 * s;
+  /* Вертикальные координаты (сверху вниз, как на схеме) */
+  const yG = 30;                                          // поверхность земли
+  const yTape = yG + 100 * s;                             // сигнальная лента (100 мм от поверхности)
+  const yBackfillBot = yTape + 100 * s;                   // низ обратной засыпки (ещё 100 мм)
+  const yPGS = yBackfillBot + 70 * s;                     // низ слоя ПГС (70 мм)
+  const yPlateTop = yPGS;                                 // верх плиты перекрытия (лежит на лотке)
+  const yPlateBot = yPlateTop + 30 * s;                   // низ плиты (~30 мм)
+  const yTrayTop = yPlateBot;                             // верх стенок лотка (под плитой)
+  const yTrayBot = yTrayTop + 780 * s;                    // дно лотка (780 мм высота лотка)
+  const yBottomPlate = yTrayBot + 100 * s;                // нижняя плита (100 мм)
+  const yEnd = yBottomPlate;
 
   /* Горизонтальные размеры лотка */
-  const trayW = (tray.innerW + 140) * s;
-  const wallT = 70 * s;
-  const flangeExt = 20 * s;
-  const flangeW = trayW + 2 * flangeExt;
-  const trayLeft = cx - trayW / 2;
-  const trayRight = cx + trayW / 2;
-  const flangeLeft = cx - flangeW / 2;
-  const flangeRight = cx + flangeW / 2;
-  const innerLeft = trayLeft + wallT;
-  const innerRight = trayRight - wallT;
-  const innerW = innerRight - innerLeft;
-  const cavityTop = yTrayBot + wallT;
-  const cavityH = yFlange - wallT - cavityTop;
+  const trayW = (tray.innerW + 140) * s;                  // полная ширина лотка с учётом стенок
+  const wallT = 70 * s;                                    // толщина стенки лотка
+  const flangeExt = 20 * s;                                // выступ полки наружу
+  const flangeW = trayW + 2 * flangeExt;                   // полная ширина с полками
+  const trayLeft = cx - trayW / 2;                         // левый край лотка
+  const trayRight = cx + trayW / 2;                        // правый край лотка
+  const flangeLeft = cx - flangeW / 2;                     // левый край полки
+  const flangeRight = cx + flangeW / 2;                    // правый край полки
+  const innerLeft = trayLeft + wallT;                      // внутренняя левая стенка
+  const innerRight = trayRight - wallT;                    // внутренняя правая стенка
+  const innerW = innerRight - innerLeft;                   // ширина полости лотка
+  const cavityH = yTrayBot - yTrayTop - wallT;             // высота полости лотка
 
-  const hG = yTape - yG;
-  const hBackfill = yBackfillBot - yTape;
-  const hPGS = yPGS - yBackfillBot;
-  const hTray = yFlange - yTrayBot;
+  const hG = yTape - yG;                                   // высота слоя до ленты
+  const hBackfill = yBackfillBot - yTape;                  // высота обратной засыпки
+  const hPGS = yPGS - yBackfillBot;                        // высота ПГС
+  const hTray = yTrayBot - yTrayTop;                       // высота лотка
 
   const soilId = uid("soil");
   const concId = uid("conc");
   const pgsId = uid("pgs");
-  const plateHatchId = uid("plateH");
 
   const showCables = Math.min(cables, 6);
   const cableR = Math.max(3, Math.min(8, innerW / (showCables * 3)));
 
+  /* Дерновые отметки на поверхности земли */
   const grassTicks: React.ReactNode[] = [];
   for (let x = dimX + 4; x < xL - 2; x += 14) {
     grassTicks.push(<line key={`gl${x}`} x1={x} y1={yG + 1} x2={x - 5} y2={yG + 9} stroke="#999" strokeWidth="0.8" />);
@@ -282,26 +284,24 @@ function LotokDiagram({ p, cables }: { p: ParamsMap["lotok"]; cables: number }) 
   return (
     <svg viewBox={`0 0 600 ${Math.round(yEnd + 36)}`} className="w-full h-auto select-none" style={{ maxHeight: 420 }}>
       <defs>
-        {/* Грунт — наклонные линии */}
-        <pattern id={soilId} width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-          <line x1="0" y1="0" x2="0" y2="8" stroke="#8B8B95" strokeWidth="0.8" />
+        {/* Грунт — крестики (+) */}
+        <pattern id={soilId} width="12" height="12" patternUnits="userSpaceOnUse">
+          <line x1="6" y1="2" x2="6" y2="10" stroke="#8B8B95" strokeWidth="0.7" />
+          <line x1="2" y1="6" x2="10" y2="6" stroke="#8B8B95" strokeWidth="0.7" />
         </pattern>
-        {/* Лоток / бетон — наклонные линии (другой наклон) */}
+        {/* Бетон (лоток, плита) — диагональные линии */}
         <pattern id={concId} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
           <line x1="0" y1="0" x2="0" y2="6" stroke="#555" strokeWidth="0.9" />
         </pattern>
-        {/* ПГС — кружки */}
+        {/* ПГС — точки (песчано-гравийная смесь) */}
         <pattern id={pgsId} width="10" height="10" patternUnits="userSpaceOnUse">
           <circle cx="3" cy="3" r="1.5" fill="none" stroke="#777" strokeWidth="0.7" />
           <circle cx="7.5" cy="7" r="1.2" fill="none" stroke="#777" strokeWidth="0.7" />
-        </pattern>
-        {/* Плита — наклонные линии (обратный наклон) */}
-        <pattern id={plateHatchId} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
-          <line x1="0" y1="0" x2="0" y2="6" stroke="#555" strokeWidth="0.9" />
+          <circle cx="5" cy="8" r="0.8" fill="#999" opacity="0.5" />
         </pattern>
       </defs>
 
-      {/* ===== Грунт (боковые массивы) ===== */}
+      {/* ===== Грунт (боковые массивы за стенками траншеи) ===== */}
       <rect x={0} y={yG} width={xL} height={yEnd - yG} fill={`url(#${soilId})`} opacity="0.45" />
       <rect x={xR} y={yG} width={600 - xR} height={yEnd - yG} fill={`url(#${soilId})`} opacity="0.45" />
 
@@ -314,43 +314,42 @@ function LotokDiagram({ p, cables }: { p: ParamsMap["lotok"]; cables: number }) 
       <line x1={xL} y1={yG} x2={xL} y2={yEnd} stroke="#333" strokeWidth="1" />
       <line x1={xR} y1={yG} x2={xR} y2={yEnd} stroke="#333" strokeWidth="1" />
 
-      {/* Обратная засыпка (грунт выше ПГС) */}
+      {/* Обратная засыпка (грунт между стенками траншеи, выше ПГС) */}
       <rect x={xL} y={yG} width={xR - xL} height={yBackfillBot - yG} fill={`url(#${soilId})`} opacity="0.25" />
 
       {/* Разделительные линии слоёв */}
       <line x1={xL} y1={yTape} x2={xR} y2={yTape} stroke="#555" strokeWidth="0.6" strokeDasharray="4 3" />
       <line x1={xL} y1={yBackfillBot} x2={xR} y2={yBackfillBot} stroke="#555" strokeWidth="0.6" strokeDasharray="4 3" />
 
-      {/* Сигнальная лента */}
+      {/* Сигнальная лента (красный пунктир) */}
       <line x1={xL + 4} y1={yTape} x2={xR - 4} y2={yTape} stroke="#DC2626" strokeWidth="2" strokeDasharray="8 4" />
 
-      {/* ===== ПГС — заштрихована ===== */}
+      {/* ===== ПГС — заштрихована точками ===== */}
       <rect x={xL} y={yBackfillBot} width={xR - xL} height={hPGS} fill={`url(#${pgsId})`} />
       <line x1={xL} y1={yPGS} x2={xR} y2={yPGS} stroke="#555" strokeWidth="0.6" />
 
-      {/* ===== Лоток (перевёрнутый: дно вверху, полки внизу, открыт вниз) ===== */}
-      {/* Дно лотка (верхняя плита) — заштриховано */}
-      <rect x={trayLeft} y={yTrayBot} width={trayW} height={wallT} fill={`url(#${concId})`} stroke="#333" strokeWidth="0.9" />
-
+      {/* ===== Лоток U-образный (открыт ВВЕРХ) ===== */}
       {/* Левая стенка + полка */}
       <path
-        d={`M${trayLeft} ${yTrayBot + wallT} V${yFlange} H${flangeLeft} V${yFlange + flangeExt} H${innerLeft} V${cavityTop} H${trayLeft + wallT} V${yTrayBot} H${trayLeft} Z`}
+        d={`M${trayLeft} ${yTrayTop} V${yTrayBot} H${flangeLeft} V${yTrayBot + flangeExt} H${innerLeft} V${yTrayTop + wallT} H${trayLeft + wallT} V${yTrayTop} H${trayLeft} Z`}
         fill={`url(#${concId})`} stroke="#333" strokeWidth="0.9"
       />
       {/* Правая стенка + полка */}
       <path
-        d={`M${trayRight} ${yTrayBot + wallT} V${yFlange} H${flangeRight} V${yFlange + flangeExt} H${innerRight} V${cavityTop} H${trayRight - wallT} V${yTrayBot} H${trayRight} Z`}
+        d={`M${trayRight} ${yTrayTop} V${yTrayBot} H${flangeRight} V${yTrayBot + flangeExt} H${innerRight} V${yTrayTop + wallT} H${trayRight - wallT} V${yTrayTop} H${trayRight} Z`}
         fill={`url(#${concId})`} stroke="#333" strokeWidth="0.9"
       />
+      {/* Дно лотка — заштриховано */}
+      <rect x={trayLeft} y={yTrayBot} width={trayW} height={wallT} fill={`url(#${concId})`} stroke="#333" strokeWidth="0.9" />
 
-      {/* Внутренняя полость */}
-      <rect x={innerLeft} y={cavityTop} width={innerW} height={Math.max(0, cavityH)} fill="#fff" stroke="#333" strokeWidth="0.5" />
+      {/* Внутренняя полость лотка */}
+      <rect x={innerLeft} y={yTrayTop + wallT} width={innerW} height={Math.max(0, cavityH)} fill="#fff" stroke="#333" strokeWidth="0.5" />
 
-      {/* Кабели внутри лотка */}
+      {/* Кабели внутри лотка (треугольная укладка) */}
       {Array.from({ length: showCables }, (_, i) => {
         const gap = innerW / (showCables + 1);
         const cableCx = innerLeft + gap * (i + 1);
-        const cableCy = yFlange - wallT - cableR - 4;
+        const cableCy = yTrayBot - wallT - cableR - 4;
         return (
           <g key={i}>
             <circle cx={cableCx} cy={cableCy} r={cableR} fill="#fff" stroke={ACC} strokeWidth="1.3" />
@@ -359,23 +358,29 @@ function LotokDiagram({ p, cables }: { p: ParamsMap["lotok"]; cables: number }) 
         );
       })}
 
-      {/* ===== Плита перекрытия — заштрихована ===== */}
-      <rect x={flangeLeft - 6} y={yPlate - 5} width={flangeW + 12} height={10} fill={`url(#${plateHatchId})`} stroke="#333" strokeWidth="0.9" />
+      {/* ===== Плита перекрытия (лежит СВЕРХУ на лотке) — заштрихована ===== */}
+      <rect x={flangeLeft - 6} y={yPlateTop - 5} width={flangeW + 12} height={yPlateBot - yPlateTop + 10} fill={`url(#${concId})`} stroke="#333" strokeWidth="0.9" />
+      {/* Болты/анкеры по бокам плиты */}
+      <circle cx={flangeLeft - 2} cy={yPlateTop + (yPlateBot - yPlateTop) / 2} r={4} fill="#fff" stroke="#333" strokeWidth="1" />
+      <circle cx={flangeRight + 2} cy={yPlateTop + (yPlateBot - yPlateTop) / 2} r={4} fill="#fff" stroke="#333" strokeWidth="1" />
+
+      {/* Нижняя плита (под дном лотка) */}
+      <rect x={xL} y={yTrayBot + wallT} width={xR - xL} height={100 * s} fill={`url(#${concId})`} stroke="#333" strokeWidth="0.9" />
 
       {/* ===== Размерные выноски ===== */}
       <DimV x={dimX} y1={yG} y2={yEnd} label={`${Math.round((yEnd - yG) / s)}`} side="l" />
       <DimV x={578} y1={yG} y2={yTape} label={`${Math.round(hG / s)}`} side="r" />
       <DimV x={578} y1={yTape} y2={yBackfillBot} label={`${Math.round(hBackfill / s)}`} side="r" />
       <DimV x={578} y1={yBackfillBot} y2={yPGS} label={`${Math.round(hPGS / s)}`} side="r" />
-      <DimV x={578} y1={yTrayBot} y2={yFlange} label={`${Math.round(hTray / s)}`} side="r" />
+      <DimV x={578} y1={yTrayTop} y2={yTrayBot} label={`${Math.round(hTray / s)}`} side="r" />
       <DimH x1={xL} x2={xR} y={yEnd + 14} label={`${Math.round(B)} мм`} />
 
       {/* ===== Выноски-подписи ===== */}
-      <line x1={trayRight + 4} y1={yTrayBot + hTray / 2} x2={xR + 18} y2={yTrayBot + hTray / 2 - 14} stroke={MUT} strokeWidth="0.6" />
-      <Txt x={xR + 20} y={yTrayBot + hTray / 2 - 16} t="лоток" fill={ACC} size={9} />
+      <line x1={trayRight + 4} y1={yTrayTop + hTray / 2} x2={xR + 18} y2={yTrayTop + hTray / 2 - 14} stroke={MUT} strokeWidth="0.6" />
+      <Txt x={xR + 20} y={yTrayTop + hTray / 2 - 16} t="лоток" fill={ACC} size={9} />
 
-      <line x1={flangeRight + 6} y1={yPlate} x2={xR + 18} y2={yPlate + 12} stroke={MUT} strokeWidth="0.6" />
-      <Txt x={xR + 20} y={yPlate + 14} t="плита" fill={ACC} size={9} />
+      <line x1={flangeRight + 6} y1={yPlateTop} x2={xR + 18} y2={yPlateTop - 12} stroke={MUT} strokeWidth="0.6" />
+      <Txt x={xR + 20} y={yPlateTop - 14} t="плита" fill={ACC} size={9} />
 
       <line x1={xL} y1={yBackfillBot + hPGS / 2} x2={xL - 14} y2={yBackfillBot + hPGS / 2 + 10} stroke={MUT} strokeWidth="0.6" />
       <Txt x={xL - 16} y={yBackfillBot + hPGS / 2 + 12} t="ПГС" anchor="end" fill={ACC} size={9} />
