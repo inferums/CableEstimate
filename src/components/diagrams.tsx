@@ -223,126 +223,167 @@ function BlockDiagram({ p }: { p: ParamsMap["block"] }) {
   );
 }
 
-/* =========================== лотки (процедурный SVG) =========================== */
+/* =========================== лотки (по Схема_в_лотке.svg) =========================== */
 function LotokDiagram({ p, cables }: { p: ParamsMap["lotok"]; cables: number }) {
   const tray = TRAYS.find((t) => t.mark === p.trayMark) ?? TRAYS[0];
   const plate = PLATES.find((t) => t.mark === p.plateMark) ?? PLATES[0];
 
-  // Реальные размеры в мм
-  const B_mm = Math.max(p.width * 1000, tray.innerW + 240);
-  const H_total = 2200;
-  const h_top = 100;
-  const h_tape = 100;
-  const h_protect = 70;
-  const h_tray = tray.innerH + 140;
-  const h_bedding = Math.round(p.bedding * 1000);
-  const trayW = tray.innerW + 140;
-  const trayWall = 70;
+  const s = 0.22;
+  const B = Math.max(p.width * 1000, tray.innerW + 240);
+  const cx = 300;
+  const xL = cx - (B * s) / 2;
+  const xR = cx + (B * s) / 2;
+  const dimX = 22;
 
-  // Фиксированный масштаб: 1 мм = 0.22 пикселя (сохраняет пропорции 1180×2200)
-  const scale = 0.22;
-  const vbW = Math.round(B_mm * scale) + 160; // + отступы для размеров
-  const vbH = Math.round(H_total * scale) + 80;
-  const marginX = 70;
-  const marginY_top = 30;
-  const trenchPx = B_mm * scale;
-  const x0 = (vbW - trenchPx) / 2;
-  const yGround = marginY_top;
+  /* Вертикальные координаты (сверху вниз) */
+  const yG = 30;                                       // поверхность земли
+  const yTape = yG + 100 * s;                          // сигнальная лента
+  const yBackfillBot = yTape + 33 * s;                 // низ обратной засыпки
+  const yPGS = yBackfillBot + 63 * s;                  // низ ПГС
+  const yTrayBot = yPGS + 20 * s;                      // дно лотка (верхняя плита, y=712 в SVG)
+  const yFlange = yTrayBot + (tray.innerH + 140) * s;  // полки лотка (y=535 в SVG)
+  const yPlate = yFlange + 16 * s;                     // плита перекрытия
+  const yEnd = yPlate + 14 * s;
 
-  const yTape = yGround + h_top * scale;
-  const yProtectTop = yTape + h_tape * scale;
-  const yProtectBot = yProtectTop + h_protect * scale;
-  const yTrayTop = yProtectBot;
-  const yTrayBot = yTrayTop + h_tray * scale;
-  const yBeddingBot = yTrayBot + h_bedding * scale;
+  /* Горизонтальные размеры лотка */
+  const trayW = (tray.innerW + 140) * s;
+  const wallT = 70 * s;
+  const flangeExt = 20 * s;
+  const flangeW = trayW + 2 * flangeExt;
+  const trayLeft = cx - trayW / 2;
+  const trayRight = cx + trayW / 2;
+  const flangeLeft = cx - flangeW / 2;
+  const flangeRight = cx + flangeW / 2;
+  const innerLeft = trayLeft + wallT;
+  const innerRight = trayRight - wallT;
+  const innerW = innerRight - innerLeft;
+  const cavityTop = yTrayBot + wallT;
+  const cavityH = yFlange - wallT - cavityTop;
 
-  const trayInnerX = x0 + (B_mm - trayW) / 2 * scale;
-  const trayInnerW_px = (trayW - 2 * trayWall) * scale;
-  const trayWallPx = trayWall * scale;
-  const trayInnerH_px = tray.innerH * scale;
-
-  const showCables = Math.min(cables, 6);
-  const cableR = Math.max(3, Math.min(7, trayInnerW_px / (showCables * 3)));
+  const hG = yTape - yG;
+  const hBackfill = yBackfillBot - yTape;
+  const hPGS = yPGS - yBackfillBot;
+  const hTray = yFlange - yTrayBot;
 
   const soilId = uid("soil");
-  const backfillId = uid("backfill");
-  const protectId = uid("protect");
-  const trayHatchId = uid("trayhatch");
+  const concId = uid("conc");
+  const pgsId = uid("pgs");
+  const plateHatchId = uid("plateH");
+
+  const showCables = Math.min(cables, 6);
+  const cableR = Math.max(3, Math.min(8, innerW / (showCables * 3)));
+
+  const grassTicks: React.ReactNode[] = [];
+  for (let x = dimX + 4; x < xL - 2; x += 14) {
+    grassTicks.push(<line key={`gl${x}`} x1={x} y1={yG + 1} x2={x - 5} y2={yG + 9} stroke="#999" strokeWidth="0.8" />);
+    grassTicks.push(<line key={`gr${x}`} x1={xR + 4 + (x - dimX)} y1={yG + 1} x2={xR + (x - dimX) - 1} y2={yG + 9} stroke="#999" strokeWidth="0.8" />);
+  }
 
   return (
-    <svg viewBox={`0 0 ${vbW} ${vbH}`} className="w-full h-auto select-none" style={{ maxHeight: 400 }}>
+    <svg viewBox={`0 0 600 ${Math.round(yEnd + 36)}`} className="w-full h-auto select-none" style={{ maxHeight: 420 }}>
       <defs>
-        <pattern id={soilId} width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-          <line x1="0" y1="0" x2="0" y2="10" stroke="#B0B0B8" strokeWidth="0.8" />
+        {/* Грунт — наклонные линии */}
+        <pattern id={soilId} width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="8" stroke="#8B8B95" strokeWidth="0.8" />
         </pattern>
-        <pattern id={backfillId} width="14" height="14" patternUnits="userSpaceOnUse">
-          <line x1="4" y1="2" x2="10" y2="2" stroke="#888" strokeWidth="0.7" />
-          <line x1="7" y1="0" x2="7" y2="5" stroke="#888" strokeWidth="0.7" />
-          <line x1="4" y1="9" x2="10" y2="9" stroke="#888" strokeWidth="0.7" />
-          <line x1="7" y1="7" x2="7" y2="12" stroke="#888" strokeWidth="0.7" />
+        {/* Лоток / бетон — наклонные линии (другой наклон) */}
+        <pattern id={concId} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="6" stroke="#555" strokeWidth="0.9" />
         </pattern>
-        <pattern id={protectId} width="8" height="8" patternUnits="userSpaceOnUse">
-          <circle cx="2" cy="2" r="0.9" fill="#666" />
-          <circle cx="6" cy="6" r="0.9" fill="#666" />
-          <circle cx="2" cy="6" r="0.5" fill="#999" />
-          <circle cx="6" cy="2" r="0.5" fill="#999" />
+        {/* ПГС — кружки */}
+        <pattern id={pgsId} width="10" height="10" patternUnits="userSpaceOnUse">
+          <circle cx="3" cy="3" r="1.5" fill="none" stroke="#777" strokeWidth="0.7" />
+          <circle cx="7.5" cy="7" r="1.2" fill="none" stroke="#777" strokeWidth="0.7" />
         </pattern>
-        <pattern id={trayHatchId} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        {/* Плита — наклонные линии (обратный наклон) */}
+        <pattern id={plateHatchId} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
           <line x1="0" y1="0" x2="0" y2="6" stroke="#555" strokeWidth="0.9" />
         </pattern>
       </defs>
 
-      {/* Грунт по бокам */}
-      <rect x={0} y={yGround} width={x0} height={yBeddingBot - yGround} fill={`url(#${soilId})`} opacity="0.4" />
-      <rect x={x0 + trenchPx} y={yGround} width={vbW - x0 - trenchPx} height={yBeddingBot - yGround} fill={`url(#${soilId})`} opacity="0.4" />
+      {/* ===== Грунт (боковые массивы) ===== */}
+      <rect x={0} y={yG} width={xL} height={yEnd - yG} fill={`url(#${soilId})`} opacity="0.45" />
+      <rect x={xR} y={yG} width={600 - xR} height={yEnd - yG} fill={`url(#${soilId})`} opacity="0.45" />
 
-      {/* Обратная засыпка */}
-      <rect x={x0} y={yGround} width={trenchPx} height={yProtectTop - yGround} fill={`url(#${backfillId})`} />
+      {/* Поверхность земли */}
+      <line x1={0} y1={yG} x2={xL} y2={yG} stroke="#333" strokeWidth="1.5" />
+      <line x1={xR} y1={yG} x2={600} y2={yG} stroke="#333" strokeWidth="1.5" />
+      {grassTicks}
+
+      {/* Стенки траншеи */}
+      <line x1={xL} y1={yG} x2={xL} y2={yEnd} stroke="#333" strokeWidth="1" />
+      <line x1={xR} y1={yG} x2={xR} y2={yEnd} stroke="#333" strokeWidth="1" />
+
+      {/* Обратная засыпка (грунт выше ПГС) */}
+      <rect x={xL} y={yG} width={xR - xL} height={yBackfillBot - yG} fill={`url(#${soilId})`} opacity="0.25" />
+
+      {/* Разделительные линии слоёв */}
+      <line x1={xL} y1={yTape} x2={xR} y2={yTape} stroke="#555" strokeWidth="0.6" strokeDasharray="4 3" />
+      <line x1={xL} y1={yBackfillBot} x2={xR} y2={yBackfillBot} stroke="#555" strokeWidth="0.6" strokeDasharray="4 3" />
 
       {/* Сигнальная лента */}
-      <line x1={x0 + 4} y1={yTape} x2={x0 + trenchPx - 4} y2={yTape} stroke="#DC2626" strokeWidth="2" strokeDasharray="8 4" />
+      <line x1={xL + 4} y1={yTape} x2={xR - 4} y2={yTape} stroke="#DC2626" strokeWidth="2" strokeDasharray="8 4" />
 
-      {/* Защитная засыпка */}
-      <rect x={x0} y={yProtectTop} width={trenchPx} height={h_protect * scale} fill={`url(#${protectId})`} />
+      {/* ===== ПГС — заштрихована ===== */}
+      <rect x={xL} y={yBackfillBot} width={xR - xL} height={hPGS} fill={`url(#${pgsId})`} />
+      <line x1={xL} y1={yPGS} x2={xR} y2={yPGS} stroke="#555" strokeWidth="0.6" />
 
-      {/* Постель */}
-      <rect x={x0} y={yTrayBot} width={trenchPx} height={h_bedding * scale} fill={`url(#${protectId})`} />
+      {/* ===== Лоток (перевёрнутый: дно вверху, полки внизу, открыт вниз) ===== */}
+      {/* Дно лотка (верхняя плита) — заштриховано */}
+      <rect x={trayLeft} y={yTrayBot} width={trayW} height={wallT} fill={`url(#${concId})`} stroke="#333" strokeWidth="0.9" />
 
-      {/* Лоток U-образный */}
-      <rect x={trayInnerX} y={yTrayBot - trayWallPx} width={trayInnerW_px + 2 * trayWallPx} height={trayWallPx} fill={`url(#${trayHatchId})`} stroke="#333" strokeWidth="0.8" />
-      <rect x={trayInnerX} y={yTrayTop} width={trayWallPx} height={h_tray * scale} fill={`url(#${trayHatchId})`} stroke="#333" strokeWidth="0.8" />
-      <rect x={trayInnerX + trayInnerW_px + trayWallPx} y={yTrayTop} width={trayWallPx} height={h_tray * scale} fill={`url(#${trayHatchId})`} stroke="#333" strokeWidth="0.8" />
-      <rect x={trayInnerX + trayWallPx} y={yTrayTop} width={trayInnerW_px} height={trayInnerH_px} fill="#fff" stroke="#333" strokeWidth="0.6" />
+      {/* Левая стенка + полка */}
+      <path
+        d={`M${trayLeft} ${yTrayBot + wallT} V${yFlange} H${flangeLeft} V${yFlange + flangeExt} H${innerLeft} V${cavityTop} H${trayLeft + wallT} V${yTrayBot} H${trayLeft} Z`}
+        fill={`url(#${concId})`} stroke="#333" strokeWidth="0.9"
+      />
+      {/* Правая стенка + полка */}
+      <path
+        d={`M${trayRight} ${yTrayBot + wallT} V${yFlange} H${flangeRight} V${yFlange + flangeExt} H${innerRight} V${cavityTop} H${trayRight - wallT} V${yTrayBot} H${trayRight} Z`}
+        fill={`url(#${concId})`} stroke="#333" strokeWidth="0.9"
+      />
 
-      {/* Кабели */}
+      {/* Внутренняя полость */}
+      <rect x={innerLeft} y={cavityTop} width={innerW} height={Math.max(0, cavityH)} fill="#fff" stroke="#333" strokeWidth="0.5" />
+
+      {/* Кабели внутри лотка */}
       {Array.from({ length: showCables }, (_, i) => {
-        const gap = trayInnerW_px / (showCables + 1);
-        const cx = trayInnerX + trayWallPx + gap * (i + 1);
-        const cy = yTrayBot - trayWallPx - cableR - 3;
+        const gap = innerW / (showCables + 1);
+        const cableCx = innerLeft + gap * (i + 1);
+        const cableCy = yFlange - wallT - cableR - 4;
         return (
           <g key={i}>
-            <circle cx={cx} cy={cy} r={cableR} fill="#fff" stroke="#2563EB" strokeWidth="1.2" />
-            <circle cx={cx} cy={cy} r={cableR * 0.3} fill="#2563EB" opacity="0.5" />
+            <circle cx={cableCx} cy={cableCy} r={cableR} fill="#fff" stroke={ACC} strokeWidth="1.3" />
+            <circle cx={cableCx} cy={cableCy} r={cableR * 0.3} fill={ACC} opacity="0.55" />
           </g>
         );
       })}
 
-      {/* Поверхность земли */}
-      <line x1={0} y1={yGround} x2={vbW} y2={yGround} stroke="#333" strokeWidth="1.5" />
-      {Array.from({ length: Math.floor(vbW / 12) }, (_, i) => (
-        <line key={i} x1={i * 12 + 4} y1={yGround} x2={i * 12 - 2} y2={yGround + 8} stroke="#888" strokeWidth="0.8" />
-      ))}
+      {/* ===== Плита перекрытия — заштрихована ===== */}
+      <rect x={flangeLeft - 6} y={yPlate - 5} width={flangeW + 12} height={10} fill={`url(#${plateHatchId})`} stroke="#333" strokeWidth="0.9" />
 
-      {/* Размерные линии */}
-      <DimV x={18} y1={yGround} y2={yBeddingBot} label={`${H_total}`} side="l" />
-      <DimV x={vbW - 18} y1={yGround} y2={yTape} label={`${h_top}`} side="r" />
-      <DimV x={vbW - 18} y1={yTape} y2={yProtectTop} label={`${h_tape}`} side="r" />
-      <DimV x={vbW - 18} y1={yProtectTop} y2={yProtectBot} label={`${h_protect}`} side="r" />
-      <DimV x={vbW - 18} y1={yTrayTop} y2={yTrayBot} label={`${h_tray}`} side="r" />
-      <DimV x={vbW - 18} y1={yTrayBot} y2={yBeddingBot} label={`${h_bedding}`} side="r" />
-      <DimH x1={x0} x2={x0 + trenchPx} y={yBeddingBot + 16} label={`${Math.round(B_mm)}`} />
+      {/* ===== Размерные выноски ===== */}
+      <DimV x={dimX} y1={yG} y2={yEnd} label={`${Math.round((yEnd - yG) / s)}`} side="l" />
+      <DimV x={578} y1={yG} y2={yTape} label={`${Math.round(hG / s)}`} side="r" />
+      <DimV x={578} y1={yTape} y2={yBackfillBot} label={`${Math.round(hBackfill / s)}`} side="r" />
+      <DimV x={578} y1={yBackfillBot} y2={yPGS} label={`${Math.round(hPGS / s)}`} side="r" />
+      <DimV x={578} y1={yTrayBot} y2={yFlange} label={`${Math.round(hTray / s)}`} side="r" />
+      <DimH x1={xL} x2={xR} y={yEnd + 14} label={`${Math.round(B)} мм`} />
 
-      <text x={vbW / 2} y={vbH - 4} textAnchor="middle" fontSize="10" fontFamily="JetBrains Mono, monospace" fill="#2563EB" fontWeight="600">
+      {/* ===== Выноски-подписи ===== */}
+      <line x1={trayRight + 4} y1={yTrayBot + hTray / 2} x2={xR + 18} y2={yTrayBot + hTray / 2 - 14} stroke={MUT} strokeWidth="0.6" />
+      <Txt x={xR + 20} y={yTrayBot + hTray / 2 - 16} t="лоток" fill={ACC} size={9} />
+
+      <line x1={flangeRight + 6} y1={yPlate} x2={xR + 18} y2={yPlate + 12} stroke={MUT} strokeWidth="0.6" />
+      <Txt x={xR + 20} y={yPlate + 14} t="плита" fill={ACC} size={9} />
+
+      <line x1={xL} y1={yBackfillBot + hPGS / 2} x2={xL - 14} y2={yBackfillBot + hPGS / 2 + 10} stroke={MUT} strokeWidth="0.6" />
+      <Txt x={xL - 16} y={yBackfillBot + hPGS / 2 + 12} t="ПГС" anchor="end" fill={ACC} size={9} />
+
+      <line x1={xL - 4} y1={yG + (yBackfillBot - yG) / 2} x2={xL - 14} y2={yG + (yBackfillBot - yG) / 2 + 10} stroke={MUT} strokeWidth="0.6" />
+      <Txt x={xL - 16} y={yG + (yBackfillBot - yG) / 2 + 12} t="грунт" anchor="end" fill={ACC} size={9} />
+
+      <text x={cx} y={yEnd + 30} textAnchor="middle" fontSize="10" fontFamily="JetBrains Mono, monospace" fill={ACC} fontWeight="600">
         {tray.mark} · {plate.mark} · Сер. 3.006.1-2
       </text>
     </svg>
