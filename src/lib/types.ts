@@ -21,6 +21,12 @@ export interface GnbParams {
 export interface LotokParams extends TrenchParamsBase {
   trayMark: string;
   plateMark: string;
+  /* Толщины слоёв (мм) — задаются пользователем */
+  topFill: number;      // верхняя засыпка
+  tapeWidth: number;    // ширина сигнальной ленты
+  pgsAbove: number;     // ПГС над плитой
+  pgsTop: number;       // ПГС над лотком
+  pgsInside: number;    // ПГС внутри лотка
 }
 
 export interface OpenParams extends TrenchParamsBase {
@@ -99,12 +105,26 @@ export interface ProjectState {
   cableJournal?: CableSpec[];
 }
 
+export interface VorItem {
+  name: string;
+  unit: string;
+  qty: number;
+  formula: string;
+}
+
+export interface SubSection {
+  title: string;
+  items: VorItem[];
+}
+
 export interface VorRow {
   section: number;
+  subSection: string;
   name: string;
   unit: string;
   qty: number;
   segments: string[];
+  formula: string;
 }
 
 export const VOR_SECTIONS = [

@@ -1,6 +1,6 @@
 import { TRENCH_META, VOLTAGE_META } from "../data/catalogs";
 import { fmt, segLabel, type VorResult } from "./calc";
-import { VOR_SECTIONS, type ProjectState } from "./types";
+import { type ProjectState } from "./types";
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -9,66 +9,86 @@ export async function exportVorExcel(state: ProjectState, vor: VorResult) {
   const v = VOLTAGE_META[state.voltage];
   const aoa: (string | number)[][] = [];
 
-  // Шапка
-  aoa.push(["ВЕДОМОСТЬ ОБЪЕМОВ РАБОТ", "", "", "", ""]);
-  aoa.push([`Кабельная линия ${v.label}`, "", "", "", ""]);
-  aoa.push([`Объект: ${state.projectName || "—"}${state.projectCode ? ` · шифр ${state.projectCode}` : ""}`, "", "", "", ""]);
-  aoa.push([
-    `Цепей в одной траншее: ${state.chains} · Типы прокладки: ${state.types
-      .map((t) => `${TRENCH_META[t].letter}) ${TRENCH_META[t].short}`)
-      .join(", ") || "—"}`,
-    "", "", "", "",
-  ]);
-  aoa.push([`Дата формирования: ${new Date().toLocaleDateString("ru-RU")}`, "", "", "", ""]);
+  // === Шапка документа (как в 0086-ТКР.ВР) ===
+  aoa.push(["Документ", "", "", "", "Ведомость объемов работ"]);
   aoa.push([]);
-  aoa.push(["№ п/п", "Наименование работ и затрат", "Ед. изм.", "Кол-во", "Примечание"]);
+  aoa.push(["Наименование стройки", "", "", state.projectName || "—"]);
+  aoa.push(["Наименование объекта", "", "", state.projectCode || "—"]);
+  aoa.push(["Ведомость объемов работ №", "", "", `${state.projectCode || "КЛ"}-ВР`]);
+  aoa.push(["Основание", "", "", state.projectCode || "—"]);
+  aoa.push(["Дата составления", "", "", new Date().toLocaleDateString("ru-RU")]);
+  aoa.push([]);
+  aoa.push(["Составил ФИО", "", "", ""]);
+  aoa.push(["Составил должность", "", "", "Инженер"]);
+  aoa.push(["Проверил ФИО", "", "", ""]);
+  aoa.push(["Проверил должность", "", "", "Главный инженер проекта"]);
+  aoa.push([]);
 
+  // Заголовки таблицы
+  aoa.push(["№ п.п.", "Наименование работ, ресурсов, затрат по проекту", "Ед. изм.", "Объем работ / Количество", "Формула расчета"]);
+  aoa.push(["1", "2", "3", "4", "5"]);
+
+  const merges: { s: { r: number; c: number }; e: { r: number; c: number } }[] = [];
+  const headerRows = 15; // строк до начала данных (0-indexed: строка 14)
+
+  // Мерджи шапки
+  merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 3 } });
+  merges.push({ s: { r: 2, c: 0 }, e: { r: 2, c: 3 } });
+  merges.push({ s: { r: 3, c: 0 }, e: { r: 3, c: 3 } });
+  merges.push({ s: { r: 4, c: 0 }, e: { r: 4, c: 3 } });
+  merges.push({ s: { r: 5, c: 0 }, e: { r: 5, c: 3 } });
+  merges.push({ s: { r: 6, c: 0 }, e: { r: 6, c: 3 } });
+  merges.push({ s: { r: 8, c: 0 }, e: { r: 8, c: 3 } });
+  merges.push({ s: { r: 9, c: 0 }, e: { r: 9, c: 3 } });
+  merges.push({ s: { r: 10, c: 0 }, e: { r: 10, c: 3 } });
+  merges.push({ s: { r: 11, c: 0 }, e: { r: 11, c: 3 } });
+
+  // === Данные — по разделам (подразделам) ===
+  let currentSection = "";
   let n = 0;
-  for (const section of VOR_SECTIONS) {
-    const rows = vor.rows.filter((r) => r.section === section.id);
-    if (!rows.length) continue;
-    aoa.push([`Раздел ${section.id}. ${section.title}`, "", "", "", ""]);
-    for (const r of rows) {
-      n += 1;
-      aoa.push([n, r.name, r.unit, r2(r.qty), `уч. ${r.segments.join(", ")}`]);
+
+  for (const row of vor.rows) {
+    // Если подраздел сменился — добавляем заголовок раздела
+    if (row.subSection !== currentSection) {
+      currentSection = row.subSection;
+      const sectionRow = aoa.length;
+      aoa.push([`Раздел: ${row.section}. ${currentSection}`, "", "", "", ""]);
+      merges.push({ s: { r: sectionRow, c: 0 }, e: { r: sectionRow, c: 4 } });
     }
+
+    n++;
+    aoa.push([n, row.name, row.unit, r2(row.qty), row.formula || ""]);
   }
 
+  // Итого
   aoa.push([]);
   aoa.push([`Итого позиций: ${n}`, "", "", "", ""]);
+  merges.push({ s: { r: aoa.length - 1, c: 0 }, e: { r: aoa.length - 1, c: 4 } });
   aoa.push([
     `Всего: траншей ${fmt(vor.totals.length, 0)} м · земляные работы ${fmt(vor.totals.earth)} м³ · кабель ${fmt(vor.totals.cable, 0)} м`,
     "", "", "", "",
   ]);
+  merges.push({ s: { r: aoa.length - 1, c: 0 }, e: { r: aoa.length - 1, c: 4 } });
 
-  // Блок предупреждений
+  // Предупреждения
   if (vor.warnings.length > 0) {
     aoa.push([]);
     aoa.push(["ПРЕДУПРЕЖДЕНИЯ:", "", "", "", ""]);
+    merges.push({ s: { r: aoa.length - 1, c: 0 }, e: { r: aoa.length - 1, c: 4 } });
     for (const w of vor.warnings) {
       aoa.push([w.severity === "error" ? "⛔" : "⚠️", w.text, "", "", ""]);
     }
   }
 
+  // Подписи
   aoa.push([]);
   aoa.push(["Составил: ______________", "", "Проверил: ______________", "", ""]);
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws["!cols"] = [{ wch: 7 }, { wch: 66 }, { wch: 9 }, { wch: 11 }, { wch: 34 }];
-  ws["!merges"] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 4 } },
-    { s: { r: 2, c: 0 }, e: { r: 2, c: 4 } },
-    { s: { r: 3, c: 0 }, e: { r: 3, c: 4 } },
-    { s: { r: 4, c: 0 }, e: { r: 4, c: 4 } },
-  ];
-  aoa.forEach((row, i) => {
-    if (typeof row[0] === "string" && row[0].startsWith("Раздел")) {
-      ws["!merges"]!.push({ s: { r: i, c: 0 }, e: { r: i, c: 4 } });
-    }
-  });
+  ws["!cols"] = [{ wch: 7 }, { wch: 66 }, { wch: 9 }, { wch: 14 }, { wch: 50 }];
+  ws["!merges"] = merges;
 
-  // Лист 2 — участки
+  // === Лист 2 — участки ===
   const sAoa: (string | number)[][] = [
     ["Участок", "Тип траншеи", "Покрытие", "L, м", "H1, м", "H2, м", "H ср., м", "V земляных работ, м³", "Кабель, м", "Примечание"],
   ];
@@ -99,7 +119,7 @@ export async function exportVorExcel(state: ProjectState, vor: VorResult) {
     { wch: 8 }, { wch: 10 }, { wch: 20 }, { wch: 11 }, { wch: 40 },
   ];
 
-  // Лист 3 — исходные данные
+  // === Лист 3 — исходные данные ===
   const dAoa: (string | number)[][] = [
     ["ПАРАМЕТР", "ЗНАЧЕНИЕ", "", ""],
     ["Наименование объекта", state.projectName, "", ""],

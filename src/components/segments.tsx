@@ -220,13 +220,13 @@ export function SegmentsTable({
                             </div>
                           </td>
                           <td className={`${cell} text-right`}>
-                            <NumInput value={s.length} onChange={(n) => onUpdate(s.id, { length: n })} step={1} className="w-20 ml-auto" />
+                            <NumInput value={s.length} onChange={(n) => onUpdate(s.id, { length: n })} step={1} center className="w-24 ml-auto" />
                           </td>
                           <td className={`${cell} text-right`}>
-                            <NumInput value={s.h1} onChange={(n) => onUpdate(s.id, { h1: n })} step={0.1} className="w-20 ml-auto" />
+                            <NumInput value={s.h1} onChange={(n) => onUpdate(s.id, { h1: n })} step={0.1} center className="w-24 ml-auto" />
                           </td>
                           <td className={`${cell} text-right`}>
-                            <NumInput value={s.h2} onChange={(n) => onUpdate(s.id, { h2: n })} step={0.1} className="w-20 ml-auto" />
+                            <NumInput value={s.h2} onChange={(n) => onUpdate(s.id, { h2: n })} step={0.1} center className="w-24 ml-auto" />
                           </td>
                           <td className={cell}>
                             {s.type === "gnb" ? (

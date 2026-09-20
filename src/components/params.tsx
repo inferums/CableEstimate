@@ -29,6 +29,23 @@ import {
 let uid = 100;
 const nextId = () => `p${++uid}`;
 
+function NumField({ label, value, onChange, suffix = "" }: { label: string; value: number; onChange: (n: number) => void; suffix?: string }) {
+  return (
+    <label className="block">
+      <span className="block mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-mut">{label}</span>
+      <div className="relative">
+        <input
+          type="number"
+          value={value}
+          onChange={(e) => onChange(Math.max(0, Number(e.target.value)))}
+          className="w-full bg-well border border-line rounded-md px-2.5 py-1.5 text-sm text-ink outline-none focus:border-accent"
+        />
+        {suffix && <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-mut">{suffix}</span>}
+      </div>
+    </label>
+  );
+}
+
 export const TYPE_ICONS: Record<TrenchType, (p: { className?: string }) => ReactElement> = {
   gnb: IconGnb,
   block: IconBlock,
@@ -56,7 +73,12 @@ export function defaultParamsFor(type: TrenchType): ParamsMap[TrenchType] {
     case "block":
       return { width: 0.8, bedding: 0.1, beddingType: "sand", pipes: [{ id: nextId(), diameter: 160, count: 2 }] };
     case "lotok":
-      return { width: 1.0, bedding: 0.1, beddingType: "sand", trayMark: "Л4-8", plateMark: "П5-8" };
+      return {
+        width: 1.0, bedding: 0.1, beddingType: "sand",
+        trayMark: "Л4-8", plateMark: "П5-8",
+        topFill: 300, tapeWidth: 950,
+        pgsAbove: 100, pgsTop: 70, pgsInside: 70,
+      };
     case "open":
       return { width: 0.7, bedding: 0.1, beddingType: "sand", cover: "pzk", plateMark: "П5д-8" };
     case "splice":
@@ -239,6 +261,16 @@ export function TrenchTypeForm({
               options={PLATES.map((p) => ({ value: p.mark, label: `${p.mark} · ${p.load}` }))}
             />
           </Field>
+        </div>
+        <div className="border-t border-line pt-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-mut mb-3">Толщины слоёв (мм)</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <NumField label="Верхняя засыпка" value={v.topFill} onChange={(n) => onChange({ ...v, topFill: n })} suffix="мм" />
+            <NumField label="Ширина ленты" value={v.tapeWidth} onChange={(n) => onChange({ ...v, tapeWidth: n })} suffix="мм" />
+            <NumField label="ПГС над плитой" value={v.pgsAbove} onChange={(n) => onChange({ ...v, pgsAbove: n })} suffix="мм" />
+            <NumField label="ПГС над лотком" value={v.pgsTop} onChange={(n) => onChange({ ...v, pgsTop: n })} suffix="мм" />
+            <NumField label="ПГС внутри лотка" value={v.pgsInside} onChange={(n) => onChange({ ...v, pgsInside: n })} suffix="мм" />
+          </div>
         </div>
       </div>
     );

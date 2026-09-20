@@ -26,9 +26,8 @@ import {
   NumInput,
   Reveal,
   Section,
-  useReveal,
 } from "./components/ui";
-import { VorSheet, VorPreview } from "./components/vor";
+import { VorSheet } from "./components/vor";
 import { SurfacesModal } from "./components/surfaces";
 import { SurveyImportWizard } from "./components/survey-wizard";
 import { PlanView, ProfileView } from "./components/route-viz";
@@ -66,7 +65,7 @@ function defaultState(): ProjectState {
     params: {
       gnb: { boreDiameter: 300, pipes: [{ id: "p1", diameter: 110, count: 4 }] },
       block: { width: 0.8, bedding: 0.1, beddingType: "sand", pipes: [{ id: "p2", diameter: 160, count: 2 }] },
-      lotok: { width: 1.0, bedding: 0.1, beddingType: "sand", trayMark: "Л4-8", plateMark: "П5-8" },
+      lotok: { width: 1.0, bedding: 0.1, beddingType: "sand", trayMark: "Л4-8", plateMark: "П5-8", topFill: 300, tapeWidth: 950, pgsAbove: 100, pgsTop: 70, pgsInside: 70 },
       open: { width: 0.7, bedding: 0.1, beddingType: "sand", cover: "pzk", plateMark: "П5д-8" },
       splice: { width: 1.5, bedding: 0.1, beddingType: "sand" },
     },
@@ -109,7 +108,6 @@ export default function App() {
   const [draft, setDraft] = useState<ParamsMap[TrenchType] | null>(null);
   const [activeNav, setActiveNav] = useState("sec-object");
   const sheetRef = useRef<HTMLDivElement>(null);
-  const revealSheet = useReveal<HTMLDivElement>();
   const vor = useMemo(() => buildVor(state), [state]);
 
   const patch = (p: Partial<ProjectState>) => setState((s) => ({ ...s, ...p }));
@@ -576,8 +574,7 @@ export default function App() {
                   </>
                 }
               >
-                <div className="grid lg:grid-cols-[1fr_340px] gap-5">
-                  <div ref={revealSheet} className="reveal">
+                <div>
                     <div ref={sheetRef}>
                       <VorSheet state={state} vor={vor} />
                     </div>
@@ -591,15 +588,6 @@ export default function App() {
                       Благоустройство — по бровке с уширением 0,15 м.
                     </div>
                   </div>
-                  <div className="no-print">
-                    <VorPreview
-                      state={state}
-                      vor={vor}
-                      onExport={async () => { await exportVorExcel(state, vor); }}
-                      onPrint={() => window.print()}
-                    />
-                  </div>
-                </div>
               </Section>
             </div>
           </div>
