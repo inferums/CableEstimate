@@ -81,9 +81,6 @@ function defaultState(): ProjectState {
   };
 }
 
-function initialState(): ProjectState {
-  return loadFromLocal() ?? defaultState();
-}
 
 type ModalState =
   | { kind: "picker" }
@@ -103,7 +100,11 @@ const NAV = [
 ];
 
 export default function App() {
-  const [state, setState] = useState<ProjectState>(initialState);
+  /* Сохранённый проект читается один раз при запуске и приводится к текущему
+     формату; всё, что миграция подправила, показывается пользователю. */
+  const [restored] = useState(loadFromLocal);
+  const [state, setState] = useState<ProjectState>(() => restored?.state ?? defaultState());
+  const [notices, setNotices] = useState<string[]>(() => restored?.notes ?? []);
   const [modal, setModal] = useState<ModalState>(null);
   const [draft, setDraft] = useState<ParamsMap[TrenchType] | null>(null);
   const [activeNav, setActiveNav] = useState("sec-object");
@@ -132,8 +133,9 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file) return;
     importJsonFile(file)
-      .then((loaded) => {
+      .then(({ state: loaded, notes }) => {
         setState(loaded);
+        setNotices(notes);
         saveToLocal(loaded);
       })
       .catch((err: Error) => alert(`Ошибка импорта: ${err.message}`));
@@ -290,6 +292,29 @@ export default function App() {
       </header>
 
       <div className="relative z-10 flex max-w-[1560px] mx-auto">
+        {/* ============ что изменила миграция проекта ============ */}
+        {notices.length > 0 && (
+          <div className="no-print fixed inset-x-0 top-16 z-40 bg-accent-soft border-b border-accent/40 px-4 py-3">
+            <div className="max-w-[1560px] mx-auto flex items-start gap-3">
+              <span className="text-accent font-bold text-sm leading-5">i</span>
+              <div className="flex-1 text-xs text-body space-y-1">
+                <p className="font-semibold text-accent-deep">
+                  Проект открыт в обновлённом справочнике — проверьте изменённое:
+                </p>
+                {notices.map((n, i) => (
+                  <p key={i}>{n}</p>
+                ))}
+              </div>
+              <button
+                onClick={() => setNotices([])}
+                className="btn text-[11px] font-semibold text-mut hover:text-accent px-2 py-1 rounded-md shrink-0"
+              >
+                Понятно
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ================= warnings banner ================= */}
         {vor.warnings.length > 0 && (
           <div className="no-print fixed top-16 left-0 right-0 z-30 bg-warn-soft border-b border-warn/30 px-4 py-2">
