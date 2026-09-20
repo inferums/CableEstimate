@@ -15,7 +15,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { SegmentCalc } from "../lib/calc";
 import { fmt } from "../lib/calc";
-import { TRENCH_META } from "../data/catalogs";
+import { isTypeAllowed, TRENCH_META } from "../data/catalogs";
 import type { ProjectState, Segment } from "../lib/types";
 import {
   FlashValue,
@@ -112,7 +112,8 @@ export function SegmentsTable({
   onReorder: (fromId: string, toId: string) => void;
   onOpenSurfaces: () => void;
 }) {
-  const activeTypes = state.types;
+  /* Неприменимые на этом классе напряжения типы не предлагаем выбирать */
+  const activeTypes = state.types.filter((t) => isTypeAllowed(state.voltage, t));
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),

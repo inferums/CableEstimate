@@ -120,6 +120,11 @@ export const VOLTAGE_META: Record<
      * в ряд. На 0,4–35 кВ цепи укладывают в общую конструкцию.
      */
     structurePerChain: boolean;
+    /**
+     * Способы прокладки, неприменимые на этом классе напряжения.
+     * Прокладка в железобетонных лотках на 35 кВ не применяется.
+     */
+    excludedTypes: TrenchType[];
   }
 > = {
   "0.4-10": {
@@ -128,6 +133,7 @@ export const VOLTAGE_META: Record<
     cablesPerChain: 1,
     cableNote: "кабель трёхжильный, 1 кабель на цепь",
     structurePerChain: false,
+    excludedTypes: [],
   },
   "35": {
     label: "35 кВ",
@@ -135,6 +141,7 @@ export const VOLTAGE_META: Record<
     cablesPerChain: 3,
     cableNote: "кабель одножильный, 3 кабеля на цепь",
     structurePerChain: false,
+    excludedTypes: ["lotok"],
   },
   "110-220": {
     label: "110 – 220 кВ",
@@ -142,8 +149,13 @@ export const VOLTAGE_META: Record<
     cablesPerChain: 3,
     cableNote: "кабель одножильный, 3 кабеля на цепь",
     structurePerChain: true,
+    excludedTypes: [],
   },
 };
+
+/** Применим ли способ прокладки на этом классе напряжения */
+export const isTypeAllowed = (voltage: VoltageClass, type: TrenchType) =>
+  !VOLTAGE_META[voltage].excludedTypes.includes(type);
 
 /** Зазор между соседними конструкциями в траншее, мм */
 export const STRUCTURE_GAP = 200;

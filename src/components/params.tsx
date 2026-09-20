@@ -8,12 +8,15 @@ import {
   trayInnerH,
   trayInnerW,
   TRENCH_META,
+  VOLTAGE_META,
+  isTypeAllowed,
 } from "../data/catalogs";
 import type {
   ParamsMap,
   PipeEntry,
   ProjectState,
   TrenchType,
+  VoltageClass,
 } from "../lib/types";
 import { TrenchDiagram } from "./diagrams";
 import { structureCount } from "../lib/calc";
@@ -329,14 +332,19 @@ export function TrenchTypeForm({
 /* ================= выбор типа (модалка) ================= */
 export function TypePickerList({
   added,
+  voltage,
   onPick,
 }: {
   added: TrenchType[];
+  voltage: VoltageClass;
   onPick: (t: TrenchType) => void;
 }) {
+  /* Неприменимые на этом классе напряжения способы не предлагаем вовсе */
+  const offered = TYPE_ORDER.filter((t) => isTypeAllowed(voltage, t));
+  const hidden = TYPE_ORDER.filter((t) => !isTypeAllowed(voltage, t));
   return (
     <div className="space-y-2">
-      {TYPE_ORDER.map((t) => {
+      {offered.map((t) => {
         const m = TRENCH_META[t];
         const Icon = TYPE_ICONS[t];
         const used = added.includes(t);
@@ -370,6 +378,12 @@ export function TypePickerList({
           </button>
         );
       })}
+      {hidden.length > 0 && (
+        <p className="text-[11px] text-mut2 border border-dashed border-line2 rounded-md px-3 py-2">
+          На {VOLTAGE_META[voltage].label} не применяется:{" "}
+          {hidden.map((t) => TRENCH_META[t].label.toLowerCase()).join(", ")}.
+        </p>
+      )}
     </div>
   );
 }
@@ -431,16 +445,20 @@ export function TrenchTypeCards({
       {state.types.map((t, i) => {
         const m = TRENCH_META[t];
         const Icon = TYPE_ICONS[t];
+        /* Тип мог остаться в проекте после смены класса напряжения */
+        const allowed = isTypeAllowed(state.voltage, t);
         return (
-          <div key={t} className="reveal revealed border border-line rounded-lg bg-surface shadow-card overflow-hidden flex flex-col rowin" style={{ animationDelay: `${i * 60}ms` }}>
+          <div key={t} className={`reveal revealed border rounded-lg bg-surface shadow-card overflow-hidden flex flex-col rowin ${allowed ? "border-line" : "border-danger/50"}`} style={{ animationDelay: `${i * 60}ms` }}>
             <div className="flex items-center gap-3 px-4 py-3 border-b border-line bg-raise">
-              <span className="font-mono text-xs font-bold w-6 h-6 flex items-center justify-center rounded-md bg-accent text-white">{m.letter}</span>
-              <span className="text-accent">
+              <span className={`font-mono text-xs font-bold w-6 h-6 flex items-center justify-center rounded-md text-white ${allowed ? "bg-accent" : "bg-danger"}`}>{m.letter}</span>
+              <span className={allowed ? "text-accent" : "text-danger"}>
                 <Icon className="w-6 h-6" />
               </span>
               <div className="flex-1 min-w-0">
                 <h3 className="font-display text-sm uppercase tracking-wide text-ink leading-tight">{m.label}</h3>
-                <p className="text-[10px] text-mut2 truncate">{m.desc}</p>
+                <p className="text-[10px] text-mut2 truncate">
+                  {allowed ? m.desc : `не применяется на ${VOLTAGE_META[state.voltage].label} — удалите тип`}
+                </p>
               </div>
               <button
                 onClick={() => onEdit(t)}

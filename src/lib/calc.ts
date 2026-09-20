@@ -8,6 +8,7 @@ import {
   trayInnerW,
   TRENCH_META,
   VOLTAGE_META,
+  isTypeAllowed,
 } from "../data/catalogs";
 import type {
   PipeEntry,
@@ -450,7 +451,10 @@ function lineItems(state: ProjectState): SubSection[] {
 /* ================= основной расчёт сегмента ================= */
 function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
   const label = segLabel(seg);
-  const active = state.types.includes(seg.type);
+  /* Способ прокладки может быть неприменим на этом классе напряжения —
+     например, лотков на 35 кВ не бывает */
+  const allowed = isTypeAllowed(state.voltage, seg.type);
+  const active = allowed && state.types.includes(seg.type);
   const L = Math.max(0, seg.length || 0);
   const hAvg = ((seg.h1 || 0) + (seg.h2 || 0)) / 2;
   const subSections: SubSection[] = [];
@@ -577,7 +581,11 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
       subSections.push({ title: `Благоустройство`, items: surfItemsList });
     }
   } else if (!active && L > 0) {
-    warnings.push({ code: "type-disabled", text: `Участок ${label}: тип прокладки «${TRENCH_META[seg.type].label}» отключён`, severity: "warn" });
+    warnings.push(
+      allowed
+        ? { code: "type-disabled", text: `Участок ${label}: тип прокладки «${TRENCH_META[seg.type].label}» отключён`, severity: "warn" }
+        : { code: "type-not-applicable", text: `Участок ${label}: «${TRENCH_META[seg.type].label}» не применяется на ${VOLTAGE_META[state.voltage].label} — выберите другой способ прокладки`, severity: "error" },
+    );
   }
 
   if (L <= 0) {

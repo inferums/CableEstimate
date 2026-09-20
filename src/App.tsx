@@ -602,7 +602,7 @@ export default function App() {
           sub="Выберите способ — откроется форма с разрезом и параметрами"
           onClose={() => setModal(null)}
         >
-          <TypePickerList added={state.types} onPick={(t) => openTypeEditor(t, true)} />
+          <TypePickerList added={state.types} voltage={state.voltage} onPick={(t) => openTypeEditor(t, true)} />
         </Modal>
       )}
 
