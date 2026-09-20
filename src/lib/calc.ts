@@ -3,6 +3,8 @@ import {
   PLATES,
   PZK,
   TRAYS,
+  trayInnerH,
+  trayInnerW,
   TRENCH_META,
   VOLTAGE_META,
 } from "../data/catalogs";
@@ -77,16 +79,6 @@ const totalPipes = (pipes: PipeEntry[]) => pipes.reduce((s, p) => s + p.count, 0
 
 const beddingName = (t: "sand" | "pgs") => (t === "sand" ? "песка" : "ПГС");
 
-/**
- * Объём бетона одного железобетонного изделия для расценок «монтаж, м³».
- * Берётся из справочника, если марка его содержит; иначе — оценка по массе.
- * Источник возвращается вместе с числом, чтобы он был виден в графе формулы.
- */
-function concreteVolume(item: { weight: number; volume?: number }): { per: number; src: string } {
-  if (item.volume != null) return { per: item.volume, src: `${f(item.volume, 3)} (по каталогу)` };
-  const per = item.weight / CALC.concreteDensity;
-  return { per, src: `${f(item.weight, 3)}/${f(CALC.concreteDensity)} (по массе)` };
-}
 
 export const segLabel = (s: Segment) => `${s.from || "?"}–${s.to || "?"}`;
 
@@ -164,12 +156,11 @@ function lotokInstallItems(seg: Segment, state: ProjectState): VorItem[] {
   const trays = Math.ceil(L / trayLen);
   const plates = Math.ceil(L / plateLen);
 
-  const trayOuterW = (tray.innerW + 2 * CALC.trayWall) / 1000;
-  const trayOuterH = (tray.innerH + CALC.trayBottom + CALC.trayPlateH) / 1000;
-  const trayConcrete = concreteVolume(tray);
-  const trayVol = trays * trayConcrete.per;
-  const plateConcrete = concreteVolume(plate);
-  const plateVol = plates * plateConcrete.per;
+  const trayOuterW = tray.width / 1000;
+  const trayOuterH = (tray.height + plate.thickness) / 1000;
+  /* Объём бетона — из номенклатуры серии, а не из габаритов изделия */
+  const trayVol = trays * tray.volume;
+  const plateVol = plates * plate.volume;
 
   const hydroArea = (2 * trayOuterW + 2 * trayOuterH) * trayLen * trays;
   const masticKg = hydroArea * 3 * 2.5;
@@ -179,11 +170,11 @@ function lotokInstallItems(seg: Segment, state: ProjectState): VorItem[] {
 
   const items: VorItem[] = [];
 
-  items.push({ name: `Монтаж железобетонных лотков`, unit: "м³", qty: round3(trayVol), formula: `${trays}·${trayConcrete.src} = ${f(trayVol,3)}` });
-  items.push({ name: `Лоток ${tray.mark} ${tray.innerW}×${tray.innerH}×${tray.length}мм`, unit: "шт", qty: trays, formula: `⌈${f(L)}/${f(trayLen)}⌉ = ${trays}` });
+  items.push({ name: `Монтаж железобетонных лотков`, unit: "м³", qty: round3(trayVol), formula: `${trays}·${f(tray.volume, 3)} = ${f(trayVol,3)}` });
+  items.push({ name: `Лоток ${tray.mark} ${tray.length}×${tray.width}×${tray.height} мм`, unit: "шт", qty: trays, formula: `⌈${f(L)}/${f(trayLen)}⌉ = ${trays}` });
 
-  items.push({ name: `Монтаж железобетонных плит перекрытия`, unit: "м³", qty: round3(plateVol), formula: `${plates}·${plateConcrete.src} = ${f(plateVol,3)}` });
-  items.push({ name: `Плита покрытия ${plate.mark}`, unit: "шт", qty: plates, formula: `⌈${f(L)}/${f(plateLen)}⌉ = ${plates}` });
+  items.push({ name: `Монтаж железобетонных плит перекрытия`, unit: "м³", qty: round3(plateVol), formula: `${plates}·${f(plate.volume, 3)} = ${f(plateVol,3)}` });
+  items.push({ name: `Плита перекрытия ${plate.mark} ${plate.length}×${plate.width}×${plate.thickness} мм`, unit: "шт", qty: plates, formula: `⌈${f(L)}/${f(plateLen)}⌉ = ${plates}` });
 
   items.push({ name: `Гидроизоляция битумно-эмульсионной мастикой в 3 слоя`, unit: "м²", qty: round2(hydroArea), formula: `(${f(trayOuterW)}·${f(trayOuterH)}·2+${f(trayOuterW)}·${f(trayOuterH)}·2)·${trays} = ${f(hydroArea)}` });
   items.push({ name: `Мастика битумно-эмульсионная (расход 2,5 кг/м²)`, unit: "кг", qty: round2(masticKg), formula: `${f(hydroArea)}·3·2,5 = ${f(masticKg)}` });
@@ -423,11 +414,15 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
     } else if (seg.type === "lotok") {
       const lp = state.params.lotok;
       const tray = TRAYS.find((t) => t.mark === lp.trayMark) ?? TRAYS[0];
-      const trayOuterW = (tray.innerW + 2 * CALC.trayWall) / 1000;
-      const trayOuterH = (tray.innerH + CALC.trayBottom + CALC.trayPlateH) / 1000;
+      const plate = PLATES.find((t) => t.mark === lp.plateMark) ?? PLATES[0];
+      const trayOuterW = tray.width / 1000;
+      const trayOuterH = (tray.height + plate.thickness) / 1000;
       structVol = trayOuterW * trayOuterH * L;
-      note = `лоток ${tray.mark} (${tray.innerW}×${tray.innerH})`;
+      note = `лоток ${tray.mark} (канал ${trayInnerW(tray)}×${trayInnerH(tray)} мм)`;
 
+      if (plate.width !== tray.width) {
+        warnings.push({ code: "plate-mismatch", text: `Плита ${plate.mark} (${plate.width} мм) не подходит к лотку ${tray.mark} (${tray.width} мм)`, severity: "error" });
+      }
       if (trayOuterW > B) {
         warnings.push({ code: "tray-wide", text: `Лоток (${(trayOuterW * 1000).toFixed(0)} мм) шире траншеи (${(B * 1000).toFixed(0)} мм)`, severity: "error" });
       }

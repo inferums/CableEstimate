@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { CALC, PLATES, PZK, TRAYS } from "../data/catalogs";
+import { CALC, PLATES, PZK, TRAYS, trayInnerH, trayInnerW } from "../data/catalogs";
 import type { ParamsMap, Surface, TrenchType } from "../lib/types";
 
 /* инженерные разрезы по типам прокладки + разрезы покрытий */
@@ -230,10 +230,10 @@ function LotokDiagram({ p, cables }: { p: ParamsMap["lotok"]; cables: number }) 
 
   const wallT = CALC.trayWall;
   const botT  = CALC.trayBottom;
-  const plH   = CALC.trayPlateH;
-  const iW    = tray.innerW;
-  const iH    = tray.innerH;
-  const lW    = iW + 2 * wallT;
+  const plH   = plate.thickness;
+  const iW    = trayInnerW(tray);
+  const iH    = trayInnerH(tray);
+  const lW    = tray.width;
 
   const hPgsInside = p.pgsInside;
   const cavityH = iH - hPgsInside;

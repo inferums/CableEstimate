@@ -5,6 +5,8 @@ import {
   PLATES,
   PZK,
   TRAYS,
+  trayInnerH,
+  trayInnerW,
   TRENCH_META,
 } from "../data/catalogs";
 import type {
@@ -28,6 +30,10 @@ import {
 
 let uid = 100;
 const nextId = () => `p${++uid}`;
+
+/** Наружная ширина лотка выбранной марки, мм — по ней подбираются плиты перекрытия */
+const trayWidthOf = (mark: string) =>
+  (TRAYS.find((t) => t.mark === mark) ?? TRAYS[0]).width;
 
 function NumField({ label, value, onChange, suffix = "" }: { label: string; value: number; onChange: (n: number) => void; suffix?: string }) {
   return (
@@ -247,18 +253,25 @@ export function TrenchTypeForm({
       <div className="space-y-4">
         <BeddingRow value={v} onChange={(nv) => onChange(nv as ParamsMap[TrenchType])} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Тип лотка · Сер. 3.006.1-2">
+          <Field label="Тип лотка · Сер. 3.006.1-2.87">
             <Sel
               value={v.trayMark}
               onChange={(m) => onChange({ ...v, trayMark: m })}
-              options={TRAYS.map((t) => ({ value: t.mark, label: `${t.mark} (${t.innerW}×${t.innerH})` }))}
+              options={TRAYS.map((t) => ({
+                value: t.mark,
+                label: `${t.mark} · канал ${trayInnerW(t)}×${trayInnerH(t)} · L=${t.length}`,
+              }))}
             />
           </Field>
-          <Field label="Плита перекрытия · Сер. 3.006.1-2">
+          <Field label="Плита перекрытия · Сер. 3.006.1-2.87">
             <Sel
               value={v.plateMark}
               onChange={(m) => onChange({ ...v, plateMark: m })}
-              options={PLATES.map((p) => ({ value: p.mark, label: `${p.mark} · ${p.load}` }))}
+              /* Только плиты, совпадающие по ширине с выбранным лотком */
+              options={PLATES.filter((p) => p.width === trayWidthOf(v.trayMark)).map((p) => ({
+                value: p.mark,
+                label: `${p.mark} · ${p.load} · L=${p.length}`,
+              }))}
             />
           </Field>
         </div>
