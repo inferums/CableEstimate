@@ -295,24 +295,33 @@ function gnbItems(seg: Segment, state: ProjectState): VorItem[] {
   const p = state.params.gnb;
   const L = seg.length;
   const D = p.boreDiameter;
-  const nScw = totalPipes(p.pipes);
+  /* Бурение и раствор относятся к скважине, а не к трубе: в одну скважину
+     затягивается весь пучок. На 110–220 кВ каждая цепь идёт своей скважиной. */
+  const bores = structureCount(state);
+  const pipesPerBore = totalPipes(p.pipes);
+  const perBore = bores > 1 ? `·${bores} скв.` : "";
   const items: VorItem[] = [];
 
   items.push({ name: `Монтаж комплекса установки ГНБ`, unit: "шт", qty: 1, formula: "1" });
-  items.push({ name: `Пилотное бурение`, unit: "м", qty: round2(L * nScw), formula: `${f(L)}·${nScw} = ${f(L * nScw)}` });
-  items.push({ name: `Расширение скважины до Ø${D} мм`, unit: "м", qty: round2(L * nScw), formula: `${f(L)}·${nScw} = ${f(L * nScw)}` });
+  /* При одной скважине длина совпадает с длиной перехода — «100 = 100» не пишем */
+  const boreLen = bores > 1 ? `${f(L)}${perBore} = ${f(L * bores)}` : f(L);
+  items.push({ name: `Пилотное бурение`, unit: "м", qty: round2(L * bores), formula: boreLen });
+  items.push({ name: `Расширение скважины до Ø${D} мм`, unit: "м", qty: round2(L * bores), formula: boreLen });
 
   for (const pe of p.pipes) {
-    const pipeLen = L * pe.count * 1.02;
-    items.push({ name: `Протаскивание трубы ПНД Ø${pe.diameter} мм`, unit: "м", qty: round2(pipeLen), formula: `${f(L)}·${pe.count}·1,02 = ${f(pipeLen)}` });
+    const pipeLen = L * pe.count * bores * 1.02;
+    items.push({ name: `Протаскивание трубы ПНД Ø${pe.diameter} мм`, unit: "м", qty: round2(pipeLen), formula: `${f(L)}·${pe.count}${perBore}·1,02 = ${f(pipeLen)}` });
     items.push({ name: `Труба ПНД Ø${pe.diameter} мм`, unit: "м", qty: round2(pipeLen), formula: `${f(pipeLen)}` });
 
-    const welds = Math.floor(L / 13) * pe.count * 2;
-    items.push({ name: `Сварка ПНД труб Ø${pe.diameter} мм встык`, unit: "соед.", qty: welds, formula: `⌊${f(L)}/13⌋·${pe.count}·2 = ${welds}` });
+    /* Труба приходит плетями по 13 м: на N плетей приходится N−1 стык */
+    const lengths = Math.ceil(L / CALC.hdpeStickLength);
+    const welds = Math.max(0, lengths - 1) * pe.count * bores;
+    items.push({ name: `Сварка ПНД труб Ø${pe.diameter} мм встык`, unit: "соед.", qty: welds, formula: `(⌈${f(L)}/${CALC.hdpeStickLength}⌉−1)·${pe.count}${perBore} = ${welds}` });
   }
 
-  items.push({ name: `Монтаж заглушек постоянных`, unit: "шт", qty: totalPipes(p.pipes) * 2, formula: `${totalPipes(p.pipes)}·2 = ${totalPipes(p.pipes) * 2}` });
-  items.push({ name: `Монтаж заглушек временных`, unit: "шт", qty: totalPipes(p.pipes) * 2, formula: `${totalPipes(p.pipes)}·2 = ${totalPipes(p.pipes) * 2}` });
+  const plugs = pipesPerBore * bores * 2;
+  items.push({ name: `Монтаж заглушек постоянных`, unit: "шт", qty: plugs, formula: `${pipesPerBore}${perBore}·2 = ${plugs}` });
+  items.push({ name: `Монтаж заглушек временных`, unit: "шт", qty: plugs, formula: `${pipesPerBore}${perBore}·2 = ${plugs}` });
 
   const cableCount = state.chains * VOLTAGE_META[state.voltage].cablesPerChain;
   const tiesPerMeter = 3;
@@ -322,19 +331,19 @@ function gnbItems(seg: Segment, state: ProjectState): VorItem[] {
   const ropeLen = (L * 1.02 + 2) * (tiesPerMeter * cableCount + 2);
   items.push({ name: `Синтетический трос`, unit: "м", qty: round2(ropeLen), formula: `(${f(L)}·1,02+2)·(${tiesPerMeter}·${cableCount}+2) = ${f(ropeLen)}` });
 
-  const boreArea = (Math.PI / 4) * Math.pow(D / 1000, 2);
-  const slurryVol = (8 + 0.785 * Math.pow(D / 1000, 2) * (L + 0.1 * L)) * nScw;
-  items.push({ name: `Буровой раствор`, unit: "м³", qty: round3(slurryVol), formula: `(8+0,785·${f(D / 1000, 2)}²·(${f(L)}+0,1·${f(L)}))·${nScw} = ${f(slurryVol, 3)}` });
+  /* Раствор и реагенты — на скважину: 8 м³ на замес плюс объём скважины с запасом 10% */
+  const slurryVol = (8 + 0.785 * Math.pow(D / 1000, 2) * (L + 0.1 * L)) * bores;
+  items.push({ name: `Буровой раствор`, unit: "м³", qty: round3(slurryVol), formula: `(8+0,785·${f(D / 1000, 2)}²·(${f(L)}+0,1·${f(L)}))${perBore} = ${f(slurryVol, 3)}` });
 
-  const bentoniteKg = L * 337.4 * nScw;
-  items.push({ name: `Порошок бентонитовый`, unit: "кг", qty: round2(bentoniteKg), formula: `${f(L)}·337,4·${nScw} = ${f(bentoniteKg)}` });
+  const bentoniteKg = L * 337.4 * bores;
+  items.push({ name: `Порошок бентонитовый`, unit: "кг", qty: round2(bentoniteKg), formula: `${f(L)}·337,4${perBore} = ${f(bentoniteKg)}` });
 
-  const polymerKg = L * 20.5 * nScw;
-  items.push({ name: `Состав полимерный для кондиционирования грунтов`, unit: "кг", qty: round2(polymerKg), formula: `${f(L)}·20,5·${nScw} = ${f(polymerKg)}` });
+  const polymerKg = L * 20.5 * bores;
+  items.push({ name: `Состав полимерный для кондиционирования грунтов`, unit: "кг", qty: round2(polymerKg), formula: `${f(L)}·20,5${perBore} = ${f(polymerKg)}` });
 
   const pipeAreas = p.pipes.reduce((s, pe) => s + (Math.PI / 4) * Math.pow(pe.diameter / 1000, 2) * pe.count, 0);
-  const slurryPump = L * pipeAreas;
-  items.push({ name: `Откачка буровых жидкостей`, unit: "м³", qty: round3(slurryPump), formula: `${f(L)}·${f(pipeAreas, 4)} = ${f(slurryPump, 3)}` });
+  const slurryPump = L * pipeAreas * bores;
+  items.push({ name: `Откачка буровых жидкостей`, unit: "м³", qty: round3(slurryPump), formula: `${f(L)}·${f(pipeAreas, 4)}${perBore} = ${f(slurryPump, 3)}` });
   items.push({ name: `Утилизация бурового шлама`, unit: "м³", qty: round3(slurryPump), formula: `${f(slurryPump, 3)}` });
 
   items.push({ name: `Демонтаж комплекса установки ГНБ`, unit: "шт", qty: 1, formula: "1" });
@@ -470,11 +479,16 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
       subSections.push({ title: `ГНБ`, items: gnbItemsList });
 
       const D = state.params.gnb.boreDiameter;
-      const Vb = (Math.PI / 4) * Math.pow(D / 1000, 2) * L;
-      const pitVol = CALC.gnbPitVolume * 2;
+      /* У каждой скважины свои входной и выходной приямки */
+      const bores = structureCount(state);
+      const Vb = (Math.PI / 4) * Math.pow(D / 1000, 2) * L * bores;
+      const pitVol = CALC.gnbPitVolume * 2 * bores;
       excavation = Vb + pitVol;
-      structVol = pipesVolume(state.params.gnb.pipes, L);
-      note = `скважина Ø${D} мм; труб: ${totalPipes(state.params.gnb.pipes)} шт`;
+      structVol = pipesVolume(state.params.gnb.pipes, L) * bores;
+      const pipesPerBore = totalPipes(state.params.gnb.pipes);
+      note = bores > 1
+        ? `${bores} скв. Ø${D} мм × ${pipesPerBore} труб, по скважине на цепь`
+        : `скважина Ø${D} мм; труб: ${pipesPerBore} шт`;
 
       const pipeArea = pipesVolume(state.params.gnb.pipes, 1);
       const boreArea = (Math.PI / 4) * Math.pow(D / 1000, 2);
