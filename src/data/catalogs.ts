@@ -15,11 +15,17 @@ export interface TrayMark {
   innerH: number; // мм, высота канала в свету
   length: number; // мм
   weight: number; // т / шт
+  /**
+   * Объём бетона изделия, м³ — по каталогу изготовителя.
+   * Если не задан, объём для расценки «монтаж ж/б лотков» берётся по массе
+   * (weight / CALC.concreteDensity), что заметно менее точно.
+   */
+  volume?: number;
 }
 
 /** Лотки типа Л по Серии 3.006.1-2 */
 export const TRAYS: TrayMark[] = [
-  { mark: "Л4-8", innerW: 400, innerH: 600, length: 1180, weight: 0.74 },
+  { mark: "Л4-8", innerW: 400, innerH: 600, length: 1180, weight: 0.74, volume: 0.72 },
   { mark: "Л5-8", innerW: 500, innerH: 600, length: 1180, weight: 0.8 },
   { mark: "Л6-8", innerW: 600, innerH: 600, length: 1180, weight: 0.86 },
   { mark: "Л7-8", innerW: 700, innerH: 600, length: 1180, weight: 0.92 },
@@ -35,6 +41,8 @@ export interface PlateMark {
   length: number; // мм
   weight: number; // т / шт
   load: string;
+  /** Объём бетона изделия, м³ — по каталогу изготовителя (см. TrayMark.volume) */
+  volume?: number;
 }
 
 /** Плиты перекрытия (покрытия) типа П по Серии 3.006.1-2 */

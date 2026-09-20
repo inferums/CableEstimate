@@ -77,6 +77,17 @@ const totalPipes = (pipes: PipeEntry[]) => pipes.reduce((s, p) => s + p.count, 0
 
 const beddingName = (t: "sand" | "pgs") => (t === "sand" ? "песка" : "ПГС");
 
+/**
+ * Объём бетона одного железобетонного изделия для расценок «монтаж, м³».
+ * Берётся из справочника, если марка его содержит; иначе — оценка по массе.
+ * Источник возвращается вместе с числом, чтобы он был виден в графе формулы.
+ */
+function concreteVolume(item: { weight: number; volume?: number }): { per: number; src: string } {
+  if (item.volume != null) return { per: item.volume, src: `${f(item.volume, 3)} (по каталогу)` };
+  const per = item.weight / CALC.concreteDensity;
+  return { per, src: `${f(item.weight, 3)}/${f(CALC.concreteDensity)} (по массе)` };
+}
+
 export const segLabel = (s: Segment) => `${s.from || "?"}–${s.to || "?"}`;
 
 function trenchTopWidth(B: number, H: number, m: number): number {
@@ -155,9 +166,10 @@ function lotokInstallItems(seg: Segment, state: ProjectState): VorItem[] {
 
   const trayOuterW = (tray.innerW + 2 * CALC.trayWall) / 1000;
   const trayOuterH = (tray.innerH + CALC.trayBottom + CALC.trayPlateH) / 1000;
-  const trayVol = trays * trayOuterW * trayOuterH * trayLen;
-  /* Объём бетона плиты берём по массе изделия — габаритной ширины в каталоге нет */
-  const plateVol = plates * (plate.weight / CALC.concreteDensity);
+  const trayConcrete = concreteVolume(tray);
+  const trayVol = trays * trayConcrete.per;
+  const plateConcrete = concreteVolume(plate);
+  const plateVol = plates * plateConcrete.per;
 
   const hydroArea = (2 * trayOuterW + 2 * trayOuterH) * trayLen * trays;
   const masticKg = hydroArea * 3 * 2.5;
@@ -167,10 +179,10 @@ function lotokInstallItems(seg: Segment, state: ProjectState): VorItem[] {
 
   const items: VorItem[] = [];
 
-  items.push({ name: `Монтаж железобетонных лотков`, unit: "м³", qty: round3(trayVol), formula: `${trays}·${f(trayOuterW)}·${f(trayOuterH)}·${f(trayLen)} = ${f(trayVol,3)}` });
+  items.push({ name: `Монтаж железобетонных лотков`, unit: "м³", qty: round3(trayVol), formula: `${trays}·${trayConcrete.src} = ${f(trayVol,3)}` });
   items.push({ name: `Лоток ${tray.mark} ${tray.innerW}×${tray.innerH}×${tray.length}мм`, unit: "шт", qty: trays, formula: `⌈${f(L)}/${f(trayLen)}⌉ = ${trays}` });
 
-  items.push({ name: `Монтаж железобетонных плит перекрытия`, unit: "м³", qty: round3(plateVol), formula: `${plates}·${f(plate.weight, 3)}/${f(CALC.concreteDensity)} = ${f(plateVol,3)}` });
+  items.push({ name: `Монтаж железобетонных плит перекрытия`, unit: "м³", qty: round3(plateVol), formula: `${plates}·${plateConcrete.src} = ${f(plateVol,3)}` });
   items.push({ name: `Плита покрытия ${plate.mark}`, unit: "шт", qty: plates, formula: `⌈${f(L)}/${f(plateLen)}⌉ = ${plates}` });
 
   items.push({ name: `Гидроизоляция битумно-эмульсионной мастикой в 3 слоя`, unit: "м²", qty: round2(hydroArea), formula: `(${f(trayOuterW)}·${f(trayOuterH)}·2+${f(trayOuterW)}·${f(trayOuterH)}·2)·${trays} = ${f(hydroArea)}` });
