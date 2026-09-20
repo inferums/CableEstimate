@@ -324,13 +324,14 @@ function gnbItems(seg: Segment, state: ProjectState): VorItem[] {
   items.push({ name: `Монтаж заглушек постоянных`, unit: "шт", qty: plugs, formula: `${pipesPerBore}${perBore}·2 = ${plugs}` });
   items.push({ name: `Монтаж заглушек временных`, unit: "шт", qty: plugs, formula: `${pipesPerBore}${perBore}·2 = ${plugs}` });
 
-  const cableCount = state.chains * VOLTAGE_META[state.voltage].cablesPerChain;
-  const tiesPerMeter = 3;
-  const ties = Math.floor(L) * tiesPerMeter * cableCount;
-  items.push({ name: `Монтаж стяжки кабельной l=2000 мм`, unit: "шт", qty: ties, formula: `⌊${f(L)}⌋·${tiesPerMeter}·${cableCount} = ${ties}` });
+  /* Стяжка охватывает весь пучок в одном сечении, а не каждый кабель по
+     отдельности, и ставится с шагом. Пучок свой у каждой скважины. */
+  const ties = Math.ceil(L / CALC.cableTieStep) * bores;
+  items.push({ name: `Монтаж стяжки кабельной l=2000 мм`, unit: "шт", qty: ties, formula: `⌈${f(L)}/${CALC.cableTieStep}⌉${perBore} = ${ties}` });
 
-  const ropeLen = (L * 1.02 + 2) * (tiesPerMeter * cableCount + 2);
-  items.push({ name: `Синтетический трос`, unit: "м", qty: round2(ropeLen), formula: `(${f(L)}·1,02+2)·(${tiesPerMeter}·${cableCount}+2) = ${f(ropeLen)}` });
+  /* Тяговый трос — один на протяжку, длиной в скважину плюс запас с обеих сторон */
+  const ropeLen = (L * 1.02 + 2 * CALC.ropeSlack) * bores;
+  items.push({ name: `Синтетический трос`, unit: "м", qty: round2(ropeLen), formula: `(${f(L)}·1,02+2·${CALC.ropeSlack})${perBore} = ${f(ropeLen)}` });
 
   /* Раствор и реагенты — на скважину: 8 м³ на замес плюс объём скважины с запасом 10% */
   const slurryVol = (8 + 0.785 * Math.pow(D / 1000, 2) * (L + 0.1 * L)) * bores;
