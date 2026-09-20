@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { CALC, PLATES, PZK, TRAYS, trayInnerH, trayInnerW } from "../data/catalogs";
+import { CALC, PLATES, PZK, STRUCTURE_GAP, TRAYS, trayInnerH, trayInnerW } from "../data/catalogs";
 import type { ParamsMap, Surface, TrenchType } from "../lib/types";
 
 /* инженерные разрезы по типам прокладки + разрезы покрытий */
@@ -203,30 +203,45 @@ function GnbDiagram({ bore, pipes }: { bore: number; pipes: { diameter: number; 
 }
 
 /* ======================== трубный блок ======================= */
-function BlockDiagram({ p }: { p: ParamsMap["block"] }) {
+function BlockDiagram({ p, structures }: { p: ParamsMap["block"]; structures: number }) {
   const sand = uid("sand");
   const t = Trench(p.width);
   const hb = clamp(p.bedding * 220, 8, 26);
+  /* На 110–220 кВ каждая цепь идёт в своём трубном блоке */
+  const n = Math.max(1, Math.min(structures, 4));
+  const perBlock = p.pipes.reduce((s, x) => s + x.count, 0);
+  const blockW = (t.wb - 6) / n;
   return (
     <svg viewBox="0 0 340 200" className="w-full h-auto select-none">
       <Defs sand={sand} gravel={sand + "g"} conc={sand + "c"} />
       <Ground y={42} soilId={sand + "-soil"} />
       {t.el}
       <rect x={t.x1b + 3} y={158 - hb} width={t.wb - 6} height={hb} fill={`url(#${sand})`} stroke={MUT} strokeWidth="0.7" />
-      <Pipes pipes={p.pipes} cx={168} baseY={158 - hb} maxW={t.wb} />
+      {Array.from({ length: n }, (_, k) => (
+        <Pipes key={k} pipes={p.pipes} cx={t.x1b + 3 + blockW * (k + 0.5)} baseY={158 - hb} maxW={blockW} />
+      ))}
       <DimH x1={t.x1t} x2={t.x2t} y={28} label={`B=${p.width.toFixed(2).replace(".", ",")} м`} />
       <DimV x={318} y1={42} y2={158} label="H" />
       <line x1={t.x1b + 2} y1={158 - hb / 2} x2={70} y2={176} stroke={MUT} strokeWidth="0.7" />
       <Txt x={66} y={184} t={`подсыпка ${p.beddingType === "sand" ? "песок" : "ПГС"} t=${Math.round(p.bedding * 100)} см`} />
-      <Txt x={168} y={194} t={`труб: ${p.pipes.reduce((s, x) => s + x.count, 0)} шт`} anchor="middle" fill={ACC} />
+      <Txt
+        x={168}
+        y={194}
+        t={n > 1 ? `${n} блока по ${perBlock} труб — по блоку на цепь` : `труб: ${perBlock} шт`}
+        anchor="middle"
+        fill={ACC}
+      />
     </svg>
   );
 }
 
 /* =========================== лотки (по «Разрез в лотке.svg» — геометрия CAD) =========================== */
-function LotokDiagram({ p, cables }: { p: ParamsMap["lotok"]; cables: number }) {
+function LotokDiagram({ p, cables, structures }: { p: ParamsMap["lotok"]; cables: number; structures: number }) {
   const tray = TRAYS.find((t) => t.mark === p.trayMark) ?? TRAYS[0];
   const plate = PLATES.find((t) => t.mark === p.plateMark) ?? PLATES[0];
+  /* Число лотков в ряду: на 110–220 кВ по лотку на цепь */
+  const n = Math.max(1, Math.min(structures, 6));
+  const cablesPerTray = Math.max(1, Math.round(cables / n));
 
   const wallT = CALC.trayWall;
   const botT  = CALC.trayBottom;
@@ -239,7 +254,9 @@ function LotokDiagram({ p, cables }: { p: ParamsMap["lotok"]; cables: number }) 
   const cavityH = iH - hPgsInside;
   const lH = botT + hPgsInside + cavityH;
 
-  const B = Math.max(p.width * 1000, lW + 200);
+  /* Траншея должна вместить весь ряд лотков с зазорами */
+  const rowW = n * lW + (n - 1) * STRUCTURE_GAP;
+  const B = Math.max(p.width * 1000, rowW + 200);
 
   const hPgsBot   = p.bedding * 1000;
   const hPgsTop   = p.pgsTop;
@@ -269,13 +286,19 @@ function LotokDiagram({ p, cables }: { p: ParamsMap["lotok"]; cables: number }) 
   const Bpx = B * s;
   const xTL = cx - Bpx / 2;
   const xTR = cx + Bpx / 2;
-  const xLL = cx - (lW * s) / 2;
-  const xLR = cx + (lW * s) / 2;
-  const xIL = cx - (iW * s) / 2;
-  const xIR = cx + (iW * s) / 2;
   const wPx = wallT * s;
   const bPx = botT * s;
-  const cavityW = xIR - xIL;
+
+  /* Центры лотков в ряду; при одной конструкции это просто центр траншеи */
+  const trayCenters = Array.from(
+    { length: n },
+    (_, k) => cx - (rowW * s) / 2 + (lW * s) / 2 + k * (lW + STRUCTURE_GAP) * s,
+  );
+  const halfL = (lW * s) / 2;
+  const halfI = (iW * s) / 2;
+  const cavityW = iW * s;
+  const rowLeft = trayCenters[0] - halfL;
+  const rowRight = trayCenters[n - 1] + halfL;
 
   const yG = Y(0);
   const yEnd = Y(H);
@@ -285,8 +308,8 @@ function LotokDiagram({ p, cables }: { p: ParamsMap["lotok"]; cables: number }) 
   const concId     = uid("c");
   const pgsId      = uid("p");
 
-  const showCables = Math.min(cables, 6);
-  const cableR = Math.max(3, Math.min(8, cavityW / (showCables * 3)));
+  const showCables = Math.min(cablesPerTray, 6);
+  const cableR = Math.max(2.5, Math.min(8, cavityW / (showCables * 3)));
 
   const grassTicks: React.ReactNode[] = [];
   for (let x = dimX + 4; x < xTL - 2; x += 14) {
@@ -349,52 +372,63 @@ function LotokDiagram({ p, cables }: { p: ParamsMap["lotok"]; cables: number }) 
       <rect x={xTL} y={Y(yMM.pgsAbove)} width={Bpx} height={Y(yMM.plateTop) - Y(yMM.pgsAbove)} fill={`url(#${pgsId})`} />
       <line x1={xTL} y1={Y(yMM.plateTop)} x2={xTR} y2={Y(yMM.plateTop)} stroke="#999" strokeWidth="0.6" />
 
-      {/* Плита */}
-      <rect x={xLL - 6} y={Y(yMM.plateTop)} width={(xLR - xLL) + 12} height={Y(yMM.plateBot) - Y(yMM.plateTop)} fill={`url(#${concId})`} stroke="#333" strokeWidth="0.9" />
-
-      {/* ПГС по бокам: от верха плиты до низа лотка (засыпка вокруг ЗПТ) */}
-      <rect x={xTL} y={Y(yMM.plateTop)} width={xLL - xTL} height={Y(yMM.trayBot) - Y(yMM.plateTop)} fill={`url(#${pgsId})`} />
-      <rect x={xLR} y={Y(yMM.plateTop)} width={xTR - xLR} height={Y(yMM.trayBot) - Y(yMM.plateTop)} fill={`url(#${pgsId})`} />
-
-      {/* ЗПТ (засыпаны в ПГС) */}
-      <circle cx={(xTL + xLL) / 2} cy={Y((yMM.plateTop + yMM.plateBot) / 2)} r={5} fill="#fff" stroke="#333" strokeWidth="1.2" />
-      <circle cx={(xTR + xLR) / 2} cy={Y((yMM.plateTop + yMM.plateBot) / 2)} r={5} fill="#fff" stroke="#333" strokeWidth="1.2" />
-
-      {/* ПГС между лотком и плитой (по центру, над лотком) */}
-      <rect x={xLL} y={Y(yMM.plateBot)} width={xLR - xLL} height={Y(yMM.trayTop) - Y(yMM.plateBot)} fill={`url(#${pgsId})`} />
+      {/* ПГС от верха плиты до дна — общий фон, поверх которого встаёт ряд конструкций */}
+      <rect x={xTL} y={Y(yMM.plateTop)} width={Bpx} height={Y(yMM.bottom) - Y(yMM.plateTop)} fill={`url(#${pgsId})`} />
       <line x1={xTL} y1={Y(yMM.plateBot)} x2={xTR} y2={Y(yMM.plateBot)} stroke="#999" strokeWidth="0.6" />
-
-      {/* Лоток U-образный */}
-      <path
-        d={`M${xLL} ${Y(yMM.trayTop)} V${Y(yMM.trayBot)} H${xLR} V${Y(yMM.trayTop)} H${xLR - wPx} V${Y(yMM.trayBot) - bPx} H${xLL + wPx} V${Y(yMM.trayTop)} Z`}
-        fill={`url(#${concId})`} stroke="#333" strokeWidth="0.9"
-      />
-
-      {/* ПГС внутри лотка (на всю высоту полости) */}
-      <rect x={xIL} y={Y(yMM.trayTop)} width={cavityW} height={Y(yMM.trayBot) - bPx - Y(yMM.trayTop)} fill={`url(#${pgsId})`} />
-
-      {/* ПГС под лотком */}
-      <rect x={xTL} y={Y(yMM.trayBot)} width={Bpx} height={Y(yMM.bottom) - Y(yMM.trayBot)} fill={`url(#${pgsId})`} />
       <line x1={xTL} y1={Y(yMM.trayBot)} x2={xTR} y2={Y(yMM.trayBot)} stroke="#999" strokeWidth="0.6" />
 
-      {/* Кабели поверх ПГС (3 шт в треугольник 2+1) */}
-      {Array.from({ length: Math.min(showCables, 2) }, (_, i) => {
-        const gap = cavityW / 3;
-        const cableCx = xIL + gap * (i + 1);
+      {/* ЗПТ по краям траншеи, в засыпке рядом с крайними лотками */}
+      <circle cx={(xTL + rowLeft) / 2} cy={Y((yMM.plateTop + yMM.plateBot) / 2)} r={5} fill="#fff" stroke="#333" strokeWidth="1.2" />
+      <circle cx={(xTR + rowRight) / 2} cy={Y((yMM.plateTop + yMM.plateBot) / 2)} r={5} fill="#fff" stroke="#333" strokeWidth="1.2" />
+
+      {/* Ряд конструкций: на 110–220 кВ по лотку на каждую цепь */}
+      {trayCenters.map((tcx, k) => {
+        const xLL = tcx - halfL;
+        const xLR = tcx + halfL;
+        const xIL = tcx - halfI;
         const cableCy = Y(yMM.trayBot) - bPx - cableR - 4;
+        const gap = cavityW / 3;
         return (
-          <g key={`b${i}`}>
-            <circle cx={cableCx} cy={cableCy} r={cableR} fill="#fff" stroke={ACC} strokeWidth="1.3" />
-            <circle cx={cableCx} cy={cableCy} r={cableR * 0.3} fill={ACC} opacity="0.55" />
+          <g key={`tray${k}`}>
+            {/* Плита перекрытия */}
+            <rect x={xLL - 6} y={Y(yMM.plateTop)} width={(xLR - xLL) + 12} height={Y(yMM.plateBot) - Y(yMM.plateTop)} fill={`url(#${concId})`} stroke="#333" strokeWidth="0.9" />
+
+            {/* Лоток U-образный */}
+            <path
+              d={`M${xLL} ${Y(yMM.trayTop)} V${Y(yMM.trayBot)} H${xLR} V${Y(yMM.trayTop)} H${xLR - wPx} V${Y(yMM.trayBot) - bPx} H${xLL + wPx} V${Y(yMM.trayTop)} Z`}
+              fill={`url(#${concId})`} stroke="#333" strokeWidth="0.9"
+            />
+
+            {/* ПГС внутри лотка */}
+            <rect x={xIL} y={Y(yMM.trayTop)} width={cavityW} height={Y(yMM.trayBot) - bPx - Y(yMM.trayTop)} fill={`url(#${pgsId})`} />
+
+            {/* Три кабеля одной цепи — треугольником, как их и укладывают;
+                при ином числе кабелей в лотке раскладываем в ряд по дну */}
+            {showCables === 3 ? (
+              <>
+                {[0, 1].map((i) => (
+                  <g key={`c${i}`}>
+                    <circle cx={xIL + gap * (i + 1)} cy={cableCy} r={cableR} fill="#fff" stroke={ACC} strokeWidth="1.3" />
+                    <circle cx={xIL + gap * (i + 1)} cy={cableCy} r={cableR * 0.3} fill={ACC} opacity="0.55" />
+                  </g>
+                ))}
+                <circle cx={tcx} cy={cableCy - cableR * 1.8} r={cableR} fill="#fff" stroke={ACC} strokeWidth="1.3" />
+                <circle cx={tcx} cy={cableCy - cableR * 1.8} r={cableR * 0.3} fill={ACC} opacity="0.55" />
+              </>
+            ) : (
+              Array.from({ length: showCables }, (_, i) => {
+                const step = cavityW / (showCables + 1);
+                return (
+                  <g key={`c${i}`}>
+                    <circle cx={xIL + step * (i + 1)} cy={cableCy} r={cableR} fill="#fff" stroke={ACC} strokeWidth="1.3" />
+                    <circle cx={xIL + step * (i + 1)} cy={cableCy} r={cableR * 0.3} fill={ACC} opacity="0.55" />
+                  </g>
+                );
+              })
+            )}
           </g>
         );
       })}
-      {showCables >= 3 && (
-        <g>
-          <circle cx={cx} cy={Y(yMM.trayBot) - bPx - cableR * 2 - 10} r={cableR} fill="#fff" stroke={ACC} strokeWidth="1.3" />
-          <circle cx={cx} cy={Y(yMM.trayBot) - bPx - cableR * 2 - 10} r={cableR * 0.3} fill={ACC} opacity="0.55" />
-        </g>
-      )}
 
       {/* Размерные выноски */}
       <DimV x={dimX} y1={yG} y2={yEnd} label={`${Math.round(H)}`} side="l" />
@@ -406,10 +440,10 @@ function LotokDiagram({ p, cables }: { p: ParamsMap["lotok"]; cables: number }) 
       <DimH x1={xTL} x2={xTR} y={yEnd + 14} label={`${Math.round(B)} мм`} />
 
       {/* Подписи */}
-      <line x1={xLR + 4} y1={Y(yMM.trayTop) + (Y(yMM.trayBot) - Y(yMM.trayTop)) / 2} x2={xTR + 18} y2={Y(yMM.trayTop) + (Y(yMM.trayBot) - Y(yMM.trayTop)) / 2 - 14} stroke={MUT} strokeWidth="0.6" />
+      <line x1={rowRight + 4} y1={Y(yMM.trayTop) + (Y(yMM.trayBot) - Y(yMM.trayTop)) / 2} x2={xTR + 18} y2={Y(yMM.trayTop) + (Y(yMM.trayBot) - Y(yMM.trayTop)) / 2 - 14} stroke={MUT} strokeWidth="0.6" />
       <Txt x={xTR + 20} y={Y(yMM.trayTop) + (Y(yMM.trayBot) - Y(yMM.trayTop)) / 2 - 16} t="лоток" fill={ACC} size={9} />
 
-      <line x1={xLR + 6} y1={Y((yMM.plateTop + yMM.plateBot) / 2)} x2={xTR + 18} y2={Y((yMM.plateTop + yMM.plateBot) / 2) - 12} stroke={MUT} strokeWidth="0.6" />
+      <line x1={rowRight + 6} y1={Y((yMM.plateTop + yMM.plateBot) / 2)} x2={xTR + 18} y2={Y((yMM.plateTop + yMM.plateBot) / 2) - 12} stroke={MUT} strokeWidth="0.6" />
       <Txt x={xTR + 20} y={Y((yMM.plateTop + yMM.plateBot) / 2) - 14} t="плита" fill={ACC} size={9} />
 
       <line x1={xTL} y1={Y(yMM.trayBot) + (Y(yMM.bottom) - Y(yMM.trayBot)) / 2} x2={xTL - 14} y2={Y(yMM.trayBot) + (Y(yMM.bottom) - Y(yMM.trayBot)) / 2 + 10} stroke={MUT} strokeWidth="0.6" />
@@ -419,7 +453,7 @@ function LotokDiagram({ p, cables }: { p: ParamsMap["lotok"]; cables: number }) 
       <Txt x={xTL - 16} y={yG + (Y(yMM.tape) - yG) / 2 + 12} t="грунт" anchor="end" fill={ACC} size={9} />
 
       <text x={cx} y={yEnd + 30} textAnchor="middle" fontSize="10" fontFamily="JetBrains Mono, monospace" fill={ACC} fontWeight="600">
-        {tray.mark} · {plate.mark} · Сер. 3.006.1-2
+        {n > 1 ? `${n}×` : ""}{tray.mark} · {plate.mark} · Сер. 3.006.1-2.87{n > 1 ? " · по лотку на цепь" : ""}
       </text>
     </svg>
   );
@@ -432,7 +466,8 @@ function OpenDiagram({ p, cables }: { p: ParamsMap["open"]; cables: number }) {
   const t = Trench(p.width);
   const hb = clamp(p.bedding * 220, 8, 24);
   const bedTop = 158 - hb;
-  const showCables = Math.min(cables, 6);
+  /* Показываем все кабели участка: на 110–220 кВ при 4 цепях их 12 */
+  const showCables = Math.min(cables, 12);
   const cableY = bedTop - 7;
   const protY = cableY - 14;
   const protW = Math.min(t.wb - 10, 120);
@@ -444,10 +479,11 @@ function OpenDiagram({ p, cables }: { p: ParamsMap["open"]; cables: number }) {
       <rect x={t.x1b + 3} y={bedTop} width={t.wb - 6} height={hb} fill={`url(#${sand})`} stroke={MUT} strokeWidth="0.7" />
       {Array.from({ length: showCables }, (_, i) => {
         const gap = (t.wb - 20) / (showCables + 1);
+        const r = clamp((t.wb - 20) / (showCables * 2.6), 1.8, 3.6);
         return (
           <g key={i}>
-            <circle cx={t.x1b + 10 + gap * (i + 1)} cy={cableY} r={3.6} fill="#fff" stroke={ACC} strokeWidth="1.1" />
-            <path d={`M${t.x1b + 10 + gap * (i + 1) - 2} ${cableY}h4`} stroke={ACC} strokeWidth="0.8" />
+            <circle cx={t.x1b + 10 + gap * (i + 1)} cy={cableY} r={r} fill="#fff" stroke={ACC} strokeWidth="1.1" />
+            <path d={`M${t.x1b + 10 + gap * (i + 1) - r * 0.55} ${cableY}h${r * 1.1}`} stroke={ACC} strokeWidth="0.8" />
           </g>
         );
       })}
@@ -504,18 +540,21 @@ export function TrenchDiagram({
   type,
   params,
   cables,
+  structures = 1,
   className = "",
 }: {
   type: TrenchType;
   params: ParamsMap;
   cables: number;
+  /** Сколько параллельных конструкций в траншее — на 110–220 кВ по одной на цепь */
+  structures?: number;
   className?: string;
 }) {
   return (
     <div className={className}>
       {type === "gnb" && <GnbDiagram bore={params.gnb.boreDiameter} pipes={params.gnb.pipes} />}
-      {type === "block" && <BlockDiagram p={params.block} />}
-      {type === "lotok" && <LotokDiagram p={params.lotok} cables={cables} />}
+      {type === "block" && <BlockDiagram p={params.block} structures={structures} />}
+      {type === "lotok" && <LotokDiagram p={params.lotok} cables={cables} structures={structures} />}
       {type === "open" && <OpenDiagram p={params.open} cables={cables} />}
       {type === "splice" && <SpliceDiagram p={params.splice} />}
     </div>

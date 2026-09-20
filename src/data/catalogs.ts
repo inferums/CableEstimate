@@ -108,27 +108,45 @@ export const PZK = {
 
 export const VOLTAGE_META: Record<
   VoltageClass,
-  { label: string; short: string; cablesPerChain: number; cableNote: string }
+  {
+    label: string;
+    short: string;
+    cablesPerChain: number;
+    cableNote: string;
+    /**
+     * Каждая цепь прокладывается в собственной конструкции — своём лотке или
+     * своём трубном блоке. На 110–220 кВ цепи не объединяют в один канал, поэтому
+     * число лотков, плит и труб кратно числу цепей, а траншея должна вмещать их
+     * в ряд. На 0,4–35 кВ цепи укладывают в общую конструкцию.
+     */
+    structurePerChain: boolean;
+  }
 > = {
   "0.4-10": {
     label: "0,4 – 10 кВ",
     short: "0,4-10 кВ",
     cablesPerChain: 1,
     cableNote: "кабель трёхжильный, 1 кабель на цепь",
+    structurePerChain: false,
   },
   "35": {
     label: "35 кВ",
     short: "35 кВ",
     cablesPerChain: 3,
     cableNote: "кабель одножильный, 3 кабеля на цепь",
+    structurePerChain: false,
   },
   "110-220": {
     label: "110 – 220 кВ",
     short: "110-220 кВ",
     cablesPerChain: 3,
     cableNote: "кабель одножильный, 3 кабеля на цепь",
+    structurePerChain: true,
   },
 };
+
+/** Зазор между соседними конструкциями в траншее, мм */
+export const STRUCTURE_GAP = 200;
 
 export const TRENCH_META: Record<
   TrenchType,
@@ -222,6 +240,7 @@ export const CALC = {
   handWorkShare: 0.05, // доля ручной доработки дна от объёма разработки
   compactionFactor: 1.15, // коэффициент уплотнения песка/ПГС при закупке
   soilLoosen: 1.2, // коэффициент разрыхления грунта при вывозе
+  soilDensity: 1.7, // плотность грунта при перевозке, т/м³
   sludgeFactor: 1.3, // коэффициент бурового шлама ГНБ
   gnbPitVolume: 4, // объём одного приямка ГНБ, м³
   cableReserve: 0.02, // запас кабеля на прокладку (2%)

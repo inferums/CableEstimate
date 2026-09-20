@@ -34,7 +34,7 @@ import { PlanView, ProfileView } from "./components/route-viz";
 import { ComparisonTable } from "./components/comparison";
 import { TrenchDiagram } from "./components/diagrams";
 import { DEFAULT_SURFACES, TRENCH_META, VOLTAGE_META } from "./data/catalogs";
-import { buildVor } from "./lib/calc";
+import { buildVor, structureCount } from "./lib/calc";
 import { exportVorExcel } from "./lib/excel";
 import { downloadDxf } from "./lib/dxf-export";
 import { exportJsonFile, importJsonFile, loadFromLocal, saveToLocal } from "./lib/storage";
@@ -624,7 +624,7 @@ export default function App() {
           }
         >
           <div className="border border-line rounded-lg bg-well/70 mb-4 overflow-hidden">
-            <TrenchDiagram type={modalType} params={{ ...state.params, [modalType]: draft }} cables={cablesPerSegment} />
+            <TrenchDiagram type={modalType} params={{ ...state.params, [modalType]: draft }} cables={cablesPerSegment} structures={structureCount(state)} />
           </div>
           <TrenchTypeForm
             type={modalType}

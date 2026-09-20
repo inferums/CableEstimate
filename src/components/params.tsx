@@ -16,6 +16,7 @@ import type {
   TrenchType,
 } from "../lib/types";
 import { TrenchDiagram } from "./diagrams";
+import { structureCount } from "../lib/calc";
 import {
   Field,
   IconBlock,
@@ -469,7 +470,7 @@ export function TrenchTypeCards({
               )}
             </div>
             <div className="px-3 pt-2 bg-well/60">
-              <TrenchDiagram type={t} params={state.params} cables={cables} />
+              <TrenchDiagram type={t} params={state.params} cables={cables} structures={structureCount(state)} />
             </div>
             <div className="px-4 py-3 flex flex-wrap gap-1.5 border-t border-line">
               {summaryFor(t, state.params).map((s, j) => (
