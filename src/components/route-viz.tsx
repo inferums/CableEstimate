@@ -1,6 +1,7 @@
 import { useMemo } from "react";
-import type { ProjectState, Segment } from "../lib/types";
+import type { ProjectState } from "../lib/types";
 import { TRENCH_META } from "../data/catalogs";
+import { niceLength, planGeometry, profileGeometry, type PlanPoint } from "../lib/route-geometry";
 
 /* ================================================================
    Цвета типов траншеи для визуализации
@@ -14,34 +15,17 @@ const TYPE_COLORS: Record<string, string> = {
   splice: "#10B981",
 };
 
-/* ================================================================
-   Генерация синтетических координат плана
-   (когда нет реальных XY-данных съёмки)
-   ================================================================ */
-
-interface PlanPoint {
-  x: number;
-  y: number;
-  label: string;
-}
-
-function generatePlanPoints(segments: Segment[]): PlanPoint[] {
-  if (segments.length === 0) return [];
-
-  const pts: PlanPoint[] = [{ x: 0, y: 0, label: segments[0].from }];
-  let cx = 0,
-    cy = 0;
-  const baseAngle = -Math.PI / 4;
-
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    const angle = baseAngle + (i * Math.PI) / (segments.length + 1);
-    cx += Math.cos(angle) * seg.length;
-    cy += Math.sin(angle) * seg.length;
-    pts.push({ x: cx, y: cy, label: seg.to });
-  }
-
-  return pts;
+/** Плашка в заголовке: откуда взяты данные */
+function SourceBadge({ ok, okText, noText }: { ok: boolean; okText: string; noText: string }) {
+  return (
+    <span
+      className={`ml-2 px-1.5 py-0.5 rounded text-[9px] font-semibold normal-case tracking-normal ${
+        ok ? "bg-ok-soft text-ok" : "bg-warn-soft text-warn"
+      }`}
+    >
+      {ok ? okText : noText}
+    </span>
+  );
 }
 
 /* ================================================================
@@ -53,30 +37,9 @@ export function PlanView({
 }: {
   state: ProjectState;
 }) {
-  const { points, bounds } = useMemo(() => {
-    const pts = generatePlanPoints(state.segments);
-    if (pts.length === 0) return { points: [], bounds: null };
+  const geo = useMemo(() => planGeometry(state.segments), [state.segments]);
 
-    const xs = pts.map((p) => p.x);
-    const ys = pts.map((p) => p.y);
-    const minX = Math.min(...xs);
-    const maxX = Math.max(...xs);
-    const minY = Math.min(...ys);
-    const maxY = Math.max(...ys);
-    const pad = Math.max(maxX - minX, maxY - minY) * 0.12 || 10;
-
-    return {
-      points: pts,
-      bounds: {
-        minX: minX - pad,
-        maxX: maxX + pad,
-        minY: minY - pad,
-        maxY: maxY + pad,
-      },
-    };
-  }, [state.segments]);
-
-  if (!bounds || points.length < 2) {
+  if (geo.lines.length === 0) {
     return (
       <div className="border border-dashed border-line2 rounded-lg p-8 text-center text-sm text-mut2">
         Добавьте участки для отображения плана трассы
@@ -86,98 +49,127 @@ export function PlanView({
 
   const W = 800;
   const H = 400;
-  const rangeX = bounds.maxX - bounds.minX;
-  const rangeY = bounds.maxY - bounds.minY;
-  const scale = Math.min(W / rangeX, H / rangeY);
+  const margin = 40;
+
+  const pts = geo.lines.flatMap((l) => [l.a, l.b]);
+  const minE = Math.min(...pts.map((p) => p.e));
+  const maxE = Math.max(...pts.map((p) => p.e));
+  const minN = Math.min(...pts.map((p) => p.n));
+  const maxN = Math.max(...pts.map((p) => p.n));
+  const rangeE = Math.max(maxE - minE, 1);
+  const rangeN = Math.max(maxN - minN, 1);
+  /* Масштаб одинаков по обеим осям — иначе план исказит углы поворота трассы */
+  const scale = Math.min((W - 2 * margin) / rangeE, (H - 2 * margin) / rangeN);
+  const offE = (W - rangeE * scale) / 2;
+  const offN = (H - rangeN * scale) / 2;
 
   const toSvg = (p: PlanPoint) => ({
-    x: (p.x - bounds.minX) * scale,
-    y: H - (p.y - bounds.minY) * scale,
+    x: offE + (p.e - minE) * scale,
+    /* Север — вверх */
+    y: H - offN - (p.n - minN) * scale,
   });
 
-  const svgPts = points.map(toSvg);
-  const polyline = svgPts.map((p) => `${p.x},${p.y}`).join(" ");
+  const bar = niceLength(rangeE / 5);
+  const totalLen = state.segments.reduce((s, seg) => s + (seg.length || 0), 0);
 
   return (
     <div className="border border-line rounded-lg bg-surface overflow-hidden">
       <div className="px-4 py-2 border-b border-line bg-raise flex items-center justify-between">
         <span className="text-xs font-semibold uppercase tracking-wider text-mut">
-          План трассы (схема)
+          План трассы
+          <SourceBadge
+            ok={geo.surveyed}
+            okText="по съёмке"
+            noText={`условная схема: нет координат у ${geo.missing} уч.`}
+          />
         </span>
         <span className="text-[10px] font-mono text-mut2">
-          {state.segments.length} участков · {state.segments.reduce((s, seg) => s + seg.length, 0).toFixed(0)} м
+          {state.segments.length} участков · {totalLen.toFixed(0)} м
         </span>
       </div>
+      {geo.breaks > 0 && (
+        <div className="px-4 py-1.5 border-b border-line bg-amber-50 text-[11px] text-amber-800">
+          Трасса разорвана в {geo.breaks} мест(ах): начало участка не совпадает с концом предыдущего.
+          Проверьте порядок участков.
+        </div>
+      )}
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 420 }}>
-        <defs>
-          <marker id="arrow-end" viewBox="0 0 10 10" refX="9" refY="5"
-            markerWidth="6" markerHeight="6" orient="auto">
-            <path d="M0,0 L10,5 L0,10 z" fill="#94A3B8" />
-          </marker>
-        </defs>
-
         {/* Фоновая сетка */}
         {Array.from({ length: 9 }, (_, i) => (
-          <line key={`gx${i}`} x1={(i + 1) * W / 9} y1={0} x2={(i + 1) * W / 9} y2={H}
+          <line key={`gx${i}`} x1={(i + 1) * W / 10} y1={0} x2={(i + 1) * W / 10} y2={H}
             stroke="#F1F5F9" strokeWidth={0.5} />
         ))}
-        {Array.from({ length: 5 }, (_, i) => (
+        {Array.from({ length: 4 }, (_, i) => (
           <line key={`gy${i}`} x1={0} y1={(i + 1) * H / 5} x2={W} y2={(i + 1) * H / 5}
             stroke="#F1F5F9" strokeWidth={0.5} />
         ))}
 
-        {/* Сегменты — цветные линии */}
-        {state.segments.map((seg, i) => {
-          const p1 = svgPts[i];
-          const p2 = svgPts[i + 1];
-          if (!p1 || !p2) return null;
+        {/* Участки — цветные линии */}
+        {geo.lines.map(({ seg, a, b }) => {
+          const p1 = toSvg(a);
+          const p2 = toSvg(b);
           const color = TYPE_COLORS[seg.type] ?? "#6B7280";
+          /* Подпись вдоль участка, но без переворота вверх ногами */
+          let angle = (Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180) / Math.PI;
+          if (angle > 90) angle -= 180;
+          if (angle < -90) angle += 180;
+          const mx = (p1.x + p2.x) / 2;
+          const my = (p1.y + p2.y) / 2;
           return (
             <g key={seg.id}>
-              {/* Тень */}
               <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
                 stroke={color} strokeWidth={6} strokeOpacity={0.15} strokeLinecap="round" />
-              {/* Основная линия */}
               <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
                 stroke={color} strokeWidth={2.5} strokeLinecap="round" />
-              {/* Подпись типа */}
               <text
-                x={(p1.x + p2.x) / 2}
-                y={(p1.y + p2.y) / 2 - 8}
+                x={mx}
+                y={my - 6}
                 textAnchor="middle"
                 fontSize={9}
                 fontWeight={600}
                 fill={color}
+                transform={`rotate(${angle}, ${mx}, ${my})`}
                 className="select-none"
               >
-                {TRENCH_META[seg.type]?.short ?? seg.type} · {seg.length.toFixed(0)}м
+                {TRENCH_META[seg.type]?.short ?? seg.type} · {(seg.length || 0).toFixed(1)} м
               </text>
             </g>
           );
         })}
 
-        {/* Точки пикетов */}
-        {svgPts.map((p, i) => (
-          <g key={i}>
-            <circle cx={p.x} cy={p.y} r={4} fill="white" stroke={TYPE_COLORS[state.segments[i]?.type ?? state.segments[i - 1]?.type] ?? "#6B7280"} strokeWidth={2} />
-            <text x={p.x} y={p.y - 10} textAnchor="middle" fontSize={9} fontWeight={700} fill="#1E293B">
-              {points[i].label}
-            </text>
+        {/* Пикеты */}
+        {geo.nodes.map((node, i) => {
+          const p = toSvg(node);
+          return (
+            <g key={i}>
+              <circle cx={p.x} cy={p.y} r={3.5} fill="white" stroke="#475569" strokeWidth={1.5} />
+              <text x={p.x + 6} y={p.y - 6} fontSize={9} fontWeight={700} fill="#1E293B">
+                {node.label}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Стрелка севера — только когда план по съёмке */}
+        {geo.surveyed && (
+          <g transform={`translate(${W - 30}, 40)`}>
+            <path d="M0,-18 L6,4 L0,-1 L-6,4 Z" fill="#334155" />
+            <text x={0} y={16} textAnchor="middle" fontSize={10} fontWeight={700} fill="#334155">С</text>
           </g>
-        ))}
+        )}
 
         {/* Масштабная линейка */}
-        <g transform={`translate(${W - 120}, ${H - 25})`}>
-          <line x1={0} y1={0} x2={scale * 10} y2={0} stroke="#64748B" strokeWidth={1.5} />
+        <g transform={`translate(${W - 30 - bar * scale}, ${H - 20})`}>
+          <line x1={0} y1={0} x2={bar * scale} y2={0} stroke="#64748B" strokeWidth={1.5} />
           <line x1={0} y1={-3} x2={0} y2={3} stroke="#64748B" strokeWidth={1.5} />
-          <line x1={scale * 10} y1={-3} x2={scale * 10} y2={3} stroke="#64748B" strokeWidth={1.5} />
-          <text x={scale * 5} y={12} textAnchor="middle" fontSize={8} fill="#64748B" fontFamily="monospace">
-            10 м
+          <line x1={bar * scale} y1={-3} x2={bar * scale} y2={3} stroke="#64748B" strokeWidth={1.5} />
+          <text x={(bar * scale) / 2} y={-6} textAnchor="middle" fontSize={8} fill="#64748B" fontFamily="monospace">
+            {bar} м
           </text>
         </g>
 
         {/* Условные обозначения */}
-        <g transform="translate(10, 10)">
+        <g transform="translate(10, 14)">
           {Object.entries(TYPE_COLORS).map(([type, color], i) => {
             const meta = TRENCH_META[type as keyof typeof TRENCH_META];
             if (!meta) return null;
@@ -198,52 +190,15 @@ export function PlanView({
    Продольный профиль — SVG
    ================================================================ */
 
-interface ProfilePoint {
-  cumDist: number;
-  ground: number;
-  bottom: number;
-  cable: number;
-  label: string;
-}
-
-function buildProfile(segments: Segment[]): ProfilePoint[] {
-  if (segments.length === 0) return [];
-
-  const pts: ProfilePoint[] = [];
-  let cumDist = 0;
-  const firstSeg = segments[0];
-
-  pts.push({
-    cumDist: 0,
-    ground: firstSeg.groundElev1 ?? 100,
-    bottom: (firstSeg.groundElev1 ?? 100) - firstSeg.h1,
-    cable: (firstSeg.groundElev1 ?? 100) - firstSeg.h1 + 0.05,
-    label: firstSeg.from,
-  });
-
-  for (const seg of segments) {
-    cumDist += seg.length;
-    const gnd = seg.groundElev2 ?? seg.groundElev1 ?? 100;
-    pts.push({
-      cumDist,
-      ground: gnd,
-      bottom: gnd - seg.h2,
-      cable: gnd - seg.h2 + 0.05,
-      label: seg.to,
-    });
-  }
-
-  return pts;
-}
-
 export function ProfileView({
   state,
 }: {
   state: ProjectState;
 }) {
-  const profile = useMemo(() => buildProfile(state.segments), [state.segments]);
+  const geo = useMemo(() => profileGeometry(state.segments), [state.segments]);
+  const profile = geo.nodes;
 
-  if (profile.length < 2) {
+  if (profile.length < 2 || geo.total <= 0) {
     return (
       <div className="border border-dashed border-line2 rounded-lg p-8 text-center text-sm text-mut2">
         Добавьте участки для отображения продольного профиля
@@ -260,7 +215,7 @@ export function ProfileView({
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
 
-  const totalDist = profile[profile.length - 1].cumDist;
+  const totalDist = geo.total;
   const allElevs = profile.flatMap((p) => [p.ground, p.bottom]);
   const minElev = Math.min(...allElevs) - 0.5;
   const maxElev = Math.max(...allElevs) + 0.5;
@@ -269,31 +224,35 @@ export function ProfileView({
   const toX = (dist: number) => padL + (dist / totalDist) * plotW;
   const toY = (elev: number) => padT + plotH - ((elev - minElev) / elevRange) * plotH;
 
-  const groundPath = profile.map((p, i) => `${i === 0 ? "M" : "L"}${toX(p.cumDist)},${toY(p.ground)}`).join(" ");
-  const bottomPath = profile.map((p, i) => `${i === 0 ? "M" : "L"}${toX(p.cumDist)},${toY(p.bottom)}`).join(" ");
-  const cablePath = profile.map((p, i) => `${i === 0 ? "M" : "L"}${toX(p.cumDist)},${toY(p.cable)}`).join(" ");
+  const path = (get: (p: (typeof profile)[number]) => number) =>
+    profile.map((p, i) => `${i === 0 ? "M" : "L"}${toX(p.dist)},${toY(get(p))}`).join(" ");
+  const groundPath = path((p) => p.ground);
+  const bottomPath = path((p) => p.bottom);
+  /* Кабель рисуется у дна — на толщину подсыпки выше */
+  const cablePath = path((p) => p.bottom + 0.05);
 
-  // Земляная засыпка (area между ground и bottom)
   const groundFill =
     groundPath +
-    ` L${toX(profile[profile.length - 1].cumDist)},${toY(minElev)}` +
+    ` L${toX(totalDist)},${toY(minElev)}` +
     ` L${toX(0)},${toY(minElev)} Z`;
 
-  // Оси Y — засечки
   const yTicks = 5;
   const yTickStep = elevRange / yTicks;
-
-  // Оси X — засечки (каждые N метров)
-  const xTickStep = totalDist <= 50 ? 5 : totalDist <= 200 ? 20 : 50;
+  const xTickStep = niceLength(totalDist / 8);
 
   return (
     <div className="border border-line rounded-lg bg-surface overflow-hidden">
       <div className="px-4 py-2 border-b border-line bg-raise flex items-center justify-between">
         <span className="text-xs font-semibold uppercase tracking-wider text-mut">
           Продольный профиль
+          <SourceBadge
+            ok={geo.absolute}
+            okText="отметки по съёмке"
+            noText={`от поверхности: нет отметок у ${geo.missing} уч.`}
+          />
         </span>
         <span className="text-[10px] font-mono text-mut2">
-          {totalDist.toFixed(0)} м · отм. {minElev.toFixed(1)}–{maxElev.toFixed(1)} м
+          {totalDist.toFixed(0)} м · {geo.absolute ? "отм." : "глубины"} {minElev.toFixed(1)}…{maxElev.toFixed(1)} м
         </span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 320 }}>
@@ -304,7 +263,6 @@ export function ProfileView({
           </linearGradient>
         </defs>
 
-        {/* Область графика */}
         <rect x={padL} y={padT} width={plotW} height={plotH} fill="#FAFAFA" stroke="#E2E8F0" strokeWidth={0.5} />
 
         {/* Горизонтальные линии сетки + подписи Y */}
@@ -322,8 +280,8 @@ export function ProfileView({
         })}
 
         {/* Вертикальные линии сетки + подписи X */}
-        {Array.from({ length: Math.ceil(totalDist / xTickStep) + 1 }, (_, i) => {
-          const dist = Math.min(i * xTickStep, totalDist);
+        {Array.from({ length: Math.floor(totalDist / xTickStep) + 1 }, (_, i) => {
+          const dist = i * xTickStep;
           const x = toX(dist);
           return (
             <g key={`xt${i}`}>
@@ -335,53 +293,42 @@ export function ProfileView({
           );
         })}
 
-        {/* Подписи осей */}
         <text x={padL + plotW / 2} y={H - 3} textAnchor="middle" fontSize={9} fill="#64748B">
           Расстояние, м
         </text>
         <text x={12} y={padT + plotH / 2} textAnchor="middle" fontSize={9} fill="#64748B"
           transform={`rotate(-90, 12, ${padT + plotH / 2})`}>
-          Отметка, м
+          {geo.absolute ? "Отметка, м" : "От поверхности, м"}
         </text>
 
-        {/* Земляная засыпка */}
         <path d={groundFill} fill="url(#ground-grad)" />
-
-        {/* Линия земли */}
         <path d={groundPath} fill="none" stroke="#92400E" strokeWidth={2} strokeLinejoin="round" />
-
-        {/* Дно траншеи */}
         <path d={bottomPath} fill="none" stroke="#3B82F6" strokeWidth={1.5} strokeDasharray="6,3" strokeLinejoin="round" />
-
-        {/* Кабель */}
         <path d={cablePath} fill="none" stroke="#16A34A" strokeWidth={1.5} strokeLinejoin="round" />
 
-        {/* Точки пикетов + подписи */}
+        {/* Пикеты: подпись и глубина только у узлов с именем — промежуточный
+            узел ступеньки глубины стоит в той же точке */}
         {profile.map((p, i) => {
-          const x = toX(p.cumDist);
+          const x = toX(p.dist);
           const yGnd = toY(p.ground);
           return (
             <g key={i}>
-              {/* Вертикальная линия от земли до дна */}
               <line x1={x} y1={yGnd} x2={x} y2={toY(p.bottom)}
                 stroke="#94A3B8" strokeWidth={0.5} strokeDasharray="2,2" />
-              {/* Точка на земле */}
               <circle cx={x} cy={yGnd} r={3} fill="#92400E" />
-              {/* Точка на дне */}
               <circle cx={x} cy={toY(p.bottom)} r={2.5} fill="#3B82F6" />
-              {/* Подпись пикета */}
-              <text x={x} y={padT - 5} textAnchor="middle" fontSize={8} fontWeight={600} fill="#1E293B">
-                {p.label}
-              </text>
-              {/* Глубина */}
+              {p.label && (
+                <text x={x} y={padT - 5} textAnchor="middle" fontSize={8} fontWeight={600} fill="#1E293B">
+                  {p.label}
+                </text>
+              )}
               <text x={x + 4} y={(yGnd + toY(p.bottom)) / 2 + 3} fontSize={7} fill="#64748B" fontFamily="monospace">
-                {(p.ground - p.bottom).toFixed(1)}м
+                {(p.ground - p.bottom).toFixed(2)}м
               </text>
             </g>
           );
         })}
 
-        {/* Легенда */}
         <g transform={`translate(${padL + 10}, ${padT + 12})`}>
           <rect x={-4} y={-8} width={130} height={42} rx={4} fill="white" fillOpacity={0.85} stroke="#E2E8F0" strokeWidth={0.5} />
           <line x1={0} y1={0} x2={14} y2={0} stroke="#92400E" strokeWidth={2} />

@@ -287,8 +287,9 @@ export function SurveyImportWizard({ surfaces, onClose, onImport }: Props) {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {([
               ["nameIdx", "Имя точки", "PK7"],
-              ["xIdx", "X (восток)", "6543380"],
-              ["yIdx", "Y (север)", "2345755"],
+              /* Геодезическая система: X — север, Y — восток */
+              ["xIdx", "X (север)", "6543380"],
+              ["yIdx", "Y (восток)", "2345755"],
               ["zIdx", "Отметка Z", "125.3"],
               ["codeIdx", "Код", "OPN_GAZ"],
             ] as const).map(([key, label, hint]) => (
@@ -414,10 +415,10 @@ export function SurveyImportWizard({ surfaces, onClose, onImport }: Props) {
                       {seg.slopeLength.toFixed(1)}
                     </td>
                     <td className="px-2 py-1 text-right font-mono text-mut">
-                      {seg.groundElev1.toFixed(2)}
+                      {seg.groundElev1 === null ? "—" : seg.groundElev1.toFixed(2)}
                     </td>
                     <td className="px-2 py-1 text-right font-mono text-mut">
-                      {seg.groundElev2.toFixed(2)}
+                      {seg.groundElev2 === null ? "—" : seg.groundElev2.toFixed(2)}
                     </td>
                     <td className="px-2 py-1 text-right font-mono text-accent-deep font-medium">
                       {seg.h1.toFixed(2)}

@@ -69,6 +69,12 @@ export interface Segment {
   slopeLength?: number; // наклонная длина (по данным съёмки), м
   groundElev1?: number; // отметка земли в начале, м
   groundElev2?: number; // отметка земли в конце, м
+  /* Плановые координаты начала и конца по съёмке, м. Система геодезическая:
+     X — северная координата, Y — восточная. */
+  planX1?: number;
+  planY1?: number;
+  planX2?: number;
+  planY2?: number;
   designLength?: number; // проектная длина, м
   designH1?: number; // проектная глубина в начале, м
   designH2?: number; // проектная глубина в конце, м
