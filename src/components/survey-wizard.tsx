@@ -71,7 +71,12 @@ export function SurveyImportWizard({ surfaces, onClose, onImport }: Props) {
       try {
         let result: ParseResult;
 
-        if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls")) {
+        const name = file.name.toLowerCase();
+        /* Старый двоичный .xls не читается — просим пересохранить */
+        if (name.endsWith(".xls")) {
+          throw new Error("формат .xls не поддерживается, пересохраните файл как .xlsx");
+        }
+        if (name.endsWith(".xlsx")) {
           const buf = await file.arrayBuffer();
           result = await parseExcelFile(buf);
         } else {
@@ -187,7 +192,7 @@ export function SurveyImportWizard({ surfaces, onClose, onImport }: Props) {
             <input
               ref={fileRef}
               type="file"
-              accept=".csv,.txt,.xlsx,.xls"
+              accept=".csv,.txt,.xlsx"
               className="hidden"
               onChange={handleFile}
             />

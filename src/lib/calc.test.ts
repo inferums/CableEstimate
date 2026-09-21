@@ -211,3 +211,23 @@ describe("ведомость в целом", () => {
     expect(vor.rows).toHaveLength(0);
   });
 });
+
+describe("оформление графы «формула»", () => {
+  it("десятичный разделитель — запятая, а не точка", () => {
+    /* В ведомости нельзя мешать «1.2» и «0,5» в одной строке */
+    for (const type of ["lotok", "open", "block", "gnb", "splice"] as const) {
+      const vor = buildVor(project({ type, length: 82.4, depth: 1.55 }));
+      for (const r of vor.rows) {
+        expect(r.formula, `${type}: ${r.name}`).not.toMatch(/\d\.\d/);
+      }
+    }
+  });
+
+  it("целые числа не теряют разряды", () => {
+    /* f(100, 0) когда-то давало «1»: жадная срезка хвостовых нулей */
+    const vor = buildVor(project({ type: "open", length: 100 }));
+    const cable = vor.rows.find((r) => /Прокладка кабеля/.test(r.name));
+    expect(cable).toBeDefined();
+    expect(cable!.formula).toContain("100");
+  });
+});

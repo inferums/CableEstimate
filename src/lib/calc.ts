@@ -73,9 +73,22 @@ const round3 = (n: number) => Math.round(n * 1000) / 1000;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 /* Число для графы формулы: убираются только незначащие нули после запятой.
    Ограничение на дробную часть обязательно, иначе f(100, 0) даёт «1». */
+/** Десятичный разделитель в ведомости — запятая, как в проектной документации */
+const ru = (s: string) => s.replace(".", ",");
+
+/** Константа расчёта в тексте позиции или формулы */
+const c = (n: number) => ru(String(n));
+
+/* Округление для графы формулы. Регулярное выражение здесь не используется
+   намеренно: хвостовые нули срезаются посимвольно, а f(100, 0) обязано
+   давать «100», а не «1». */
 const f = (n: number, d = 2) => {
-  const s = n.toFixed(d);
-  return s.includes(".") ? s.replace(/\.?0+$/, "") || "0" : s;
+  let s = n.toFixed(d);
+  if (s.includes(".")) {
+    while (s.endsWith("0")) s = s.slice(0, -1);
+    if (s.endsWith(".")) s = s.slice(0, -1);
+  }
+  return ru(s || "0");
 };
 
 const pipesVolume = (pipes: PipeEntry[], length: number) =>
@@ -175,18 +188,18 @@ function earthworkItems(B: number, hAvg: number, L: number, structVol: number, b
   items.push({ name: `Разработка мокрого грунта экскаватором с ковшом 0,5 м³ в отвал, группа грунтов 2`, unit: "м³", qty: round3(toDump * 0.5), formula: `${f(toDump,3)}·0,5 = ${f(toDump * 0.5,3)}` });
   items.push({ name: `Разработка сухого грунта 2 гр. с погрузкой на автомобили-самосвалы`, unit: "м³", qty: round3(toTruck * 0.5), formula: `${f(toTruck,3)}·0,5 = ${f(toTruck * 0.5,3)}` });
   items.push({ name: `Разработка мокрого грунта 2 гр. с погрузкой на автомобили-самосвалы`, unit: "м³", qty: round3(toTruck * 0.5), formula: `${f(toTruck,3)}·0,5 = ${f(toTruck * 0.5,3)}` });
-  items.push({ name: `Зачистка котлована вручную в сухих грунтах 2 группы`, unit: "м³", qty: round3(handHalf), formula: `${f(b.total,3)}·${CALC.handWorkShare}·0,5 = ${f(handHalf,3)}` });
-  items.push({ name: `Зачистка котлована вручную во влажных грунтах 2 группы`, unit: "м³", qty: round3(handHalf), formula: `${f(b.total,3)}·${CALC.handWorkShare}·0,5 = ${f(handHalf,3)}` });
+  items.push({ name: `Зачистка котлована вручную в сухих грунтах 2 группы`, unit: "м³", qty: round3(handHalf), formula: `${f(b.total,3)}·${c(CALC.handWorkShare)}·0,5 = ${f(handHalf,3)}` });
+  items.push({ name: `Зачистка котлована вручную во влажных грунтах 2 группы`, unit: "м³", qty: round3(handHalf), formula: `${f(b.total,3)}·${c(CALC.handWorkShare)}·0,5 = ${f(handHalf,3)}` });
 
   /* На вывоз идёт ровно вытесненный объём, с учётом разрыхления при погрузке */
   const hauled = b.surplus * CALC.soilLoosen;
   const massTransport = hauled * CALC.soilDensity;
-  items.push({ name: `Вывоз лишнего грунта на полигон`, unit: "т", qty: round3(massTransport), formula: `(${f(b.bedding,3)}+${f(b.topFill,3)}+${f(b.struct,3)})·${CALC.soilLoosen}·${CALC.soilDensity} = ${f(massTransport,3)}` });
+  items.push({ name: `Вывоз лишнего грунта на полигон`, unit: "т", qty: round3(massTransport), formula: `(${f(b.bedding,3)}+${f(b.topFill,3)}+${f(b.struct,3)})·${c(CALC.soilLoosen)}·${c(CALC.soilDensity)} = ${f(massTransport,3)}` });
 
   items.push({ name: `Устройство основания из ${beddingName(beddingType)} (h=${Math.round(bedding * 100)} см) с уплотнением`, unit: "м³", qty: round3(b.bedding), formula: `${f(B)}·${f(bedding)}·${f(L)} = ${f(b.bedding,3)}` });
   items.push({ name: `Защитный слой ${beddingName(beddingType)} над конструкцией (h=${Math.round(CALC.topFill * 100)} см)`, unit: "м³", qty: round3(b.topFill), formula: `${f(B)}·${f(CALC.topFill)}·${f(L)} = ${f(b.topFill,3)}` });
   const matVol = (b.bedding + b.topFill) * CALC.compactionFactor;
-  items.push({ name: `${mat} (закупка с уплотнением к=${CALC.compactionFactor})`, unit: "м³", qty: round3(matVol), formula: `(${f(b.bedding,3)}+${f(b.topFill,3)})·${CALC.compactionFactor} = ${f(matVol,3)}` });
+  items.push({ name: `${mat} (закупка с уплотнением к=${c(CALC.compactionFactor)})`, unit: "м³", qty: round3(matVol), formula: `(${f(b.bedding,3)}+${f(b.topFill,3)})·${c(CALC.compactionFactor)} = ${f(matVol,3)}` });
 
   /* Обратная засыпка — местным грунтом из отвала: 10% вручную у конструкции,
      остальное бульдозером. В сумме даёт ровно b.backfill. */
@@ -264,7 +277,7 @@ function openInstallItems(seg: Segment, state: ProjectState): VorItem[] {
   } else {
     const rows = nCables;
     const pzks = Math.ceil(L / (PZK.length / 1000)) * rows;
-    items.push({ name: `Укладка ПЗК ${PZK.mark} (${PZK.dims})`, unit: "шт", qty: pzks, formula: `⌈${f(L)}/${PZK.length / 1000}⌉·${rows} = ${pzks}` });
+    items.push({ name: `Укладка ПЗК ${PZK.mark} (${PZK.dims})`, unit: "шт", qty: pzks, formula: `⌈${f(L)}/${c(PZK.length / 1000)}⌉·${rows} = ${pzks}` });
     items.push({ name: `ПЗК ${PZK.mark} (с запасом 2%)`, unit: "шт", qty: Math.ceil(pzks * 1.02), formula: `${pzks}·1,02 = ${Math.ceil(pzks * 1.02)}` });
   }
 
@@ -288,7 +301,7 @@ function blockInstallItems(seg: Segment, state: ProjectState): VorItem[] {
 
   const pipesPerBlock = totalPipes(bp.pipes);
   const spacers = Math.ceil(L / CALC.spacerStep) * pipesPerBlock * n;
-  items.push({ name: `Монтаж дистанционных фиксаторов труб (шаг ${CALC.spacerStep} м)`, unit: "шт", qty: spacers, formula: `⌈${f(L)}/${CALC.spacerStep}⌉·${pipesPerBlock}${perBlock} = ${spacers}` });
+  items.push({ name: `Монтаж дистанционных фиксаторов труб (шаг ${c(CALC.spacerStep)} м)`, unit: "шт", qty: spacers, formula: `⌈${f(L)}/${c(CALC.spacerStep)}⌉·${pipesPerBlock}${perBlock} = ${spacers}` });
 
   return items;
 }
@@ -325,7 +338,7 @@ function gnbItems(seg: Segment, state: ProjectState): { bore: VorItem[]; pipes: 
     /* Труба приходит плетями по 13 м: на N плетей приходится N−1 стык */
     const lengths = Math.ceil(L / CALC.hdpeStickLength);
     const welds = Math.max(0, lengths - 1) * pe.count * bores;
-    pipes.push({ name: `Сварка ПНД труб Ø${pe.diameter} мм встык`, unit: "соед.", qty: welds, formula: `(⌈${f(L)}/${CALC.hdpeStickLength}⌉−1)·${pe.count}${perBore} = ${welds}` });
+    pipes.push({ name: `Сварка ПНД труб Ø${pe.diameter} мм встык`, unit: "соед.", qty: welds, formula: `(⌈${f(L)}/${c(CALC.hdpeStickLength)}⌉−1)·${pe.count}${perBore} = ${welds}` });
   }
 
   const plugs = pipesPerBore * bores * 2;
@@ -335,11 +348,11 @@ function gnbItems(seg: Segment, state: ProjectState): { bore: VorItem[]; pipes: 
   /* Стяжка охватывает весь пучок в одном сечении, а не каждый кабель по
      отдельности, и ставится с шагом. Пучок свой у каждой скважины. */
   const ties = Math.ceil(L / CALC.cableTieStep) * bores;
-  pipes.push({ name: `Монтаж стяжки кабельной l=2000 мм`, unit: "шт", qty: ties, formula: `⌈${f(L)}/${CALC.cableTieStep}⌉${perBore} = ${ties}` });
+  pipes.push({ name: `Монтаж стяжки кабельной l=2000 мм`, unit: "шт", qty: ties, formula: `⌈${f(L)}/${c(CALC.cableTieStep)}⌉${perBore} = ${ties}` });
 
   /* Тяговый трос — один на протяжку, длиной в скважину плюс запас с обеих сторон */
   const ropeLen = (L * 1.02 + 2 * CALC.ropeSlack) * bores;
-  pipes.push({ name: `Синтетический трос`, unit: "м", qty: round2(ropeLen), formula: `(${f(L)}·1,02+2·${CALC.ropeSlack})${perBore} = ${f(ropeLen)}` });
+  pipes.push({ name: `Синтетический трос`, unit: "м", qty: round2(ropeLen), formula: `(${f(L)}·1,02+2·${c(CALC.ropeSlack)})${perBore} = ${f(ropeLen)}` });
 
   /* Раствор и реагенты — на скважину: 8 м³ на замес плюс объём скважины с запасом 10% */
   const slurryVol = (8 + 0.785 * Math.pow(D / 1000, 2) * (L + 0.1 * L)) * bores;
@@ -375,7 +388,7 @@ function spliceItems(seg: Segment, state: ProjectState): { earth: VorItem[]; ins
     { name: `Разработка грунта в котловане экскаватором`, unit: "м³", qty: round3(b.total), formula: `${f(B)}·${f(hAvg)}·${f(L)} = ${f(b.total, 3)}` },
     { name: `Устройство основания из ${beddingName(p.beddingType)} (h=${Math.round(p.bedding * 100)} см) с уплотнением`, unit: "м³", qty: round3(b.bedding), formula: `${f(B)}·${f(p.bedding)}·${f(L)} = ${f(b.bedding, 3)}` },
     { name: `Обратная засыпка котлована местным грунтом`, unit: "м³", qty: round3(b.backfill), formula: `${f(b.total, 3)}−${f(b.bedding, 3)} = ${f(b.backfill, 3)}` },
-    { name: `Вывоз лишнего грунта на полигон`, unit: "т", qty: round3(b.surplus * CALC.soilLoosen * CALC.soilDensity), formula: `${f(b.surplus, 3)}·${CALC.soilLoosen}·${CALC.soilDensity} = ${f(b.surplus * CALC.soilLoosen * CALC.soilDensity, 3)}` },
+    { name: `Вывоз лишнего грунта на полигон`, unit: "т", qty: round3(b.surplus * CALC.soilLoosen * CALC.soilDensity), formula: `${f(b.surplus, 3)}·${c(CALC.soilLoosen)}·${c(CALC.soilDensity)} = ${f(b.surplus * CALC.soilLoosen * CALC.soilDensity, 3)}` },
   ];
 
   const install: VorItem[] = [
@@ -401,12 +414,12 @@ function surfaceItems(seg: Segment, state: ProjectState): VorItem[] {
 
   for (const layer of surf.layers) {
     const t = Math.round(layer.thickness);
-    items.push({ name: `Разработка покрытия «${surf.name}»: ${layer.name} (t=${t} см)`, unit: "м²", qty: round2(area), formula: `(${f(Btop)}+2·${CALC.rehabWiden})·${f(seg.length)} = ${f(area)}` });
+    items.push({ name: `Разработка покрытия «${surf.name}»: ${layer.name} (t=${t} см)`, unit: "м²", qty: round2(area), formula: `(${f(Btop)}+2·${c(CALC.rehabWiden)})·${f(seg.length)} = ${f(area)}` });
     items.push({ name: `Восстановление покрытия «${surf.name}»: ${layer.name} (t=${t} см)`, unit: "м²", qty: round2(area), formula: `${f(area)}` });
   }
 
   const waste = surf.layers.reduce((s, l) => s + (area * l.thickness) / 100, 0);
-  items.push({ name: `Погрузка и вывоз отходов от разборки покрытия «${surf.name}»`, unit: "м³", qty: round3(waste * CALC.soilLoosen), formula: `${f(waste, 3)}·${CALC.soilLoosen} = ${f(waste * CALC.soilLoosen, 3)}` });
+  items.push({ name: `Погрузка и вывоз отходов от разборки покрытия «${surf.name}»`, unit: "м³", qty: round3(waste * CALC.soilLoosen), formula: `${f(waste, 3)}·${c(CALC.soilLoosen)} = ${f(waste * CALC.soilLoosen, 3)}` });
 
   return items;
 }
@@ -422,7 +435,7 @@ function cableItems(seg: Segment, state: ProjectState): VorItem[] {
   const cable = Lcable * (1 + CALC.cableReserve) * nCables;
 
   const items: VorItem[] = [];
-  items.push({ name: `Прокладка кабеля ${v.label} (${v.cableNote})`, unit: "м", qty: round3(cable), formula: `${f(Lcable)}·(1+${CALC.cableReserve})·${nCables} = ${f(cable)}` });
+  items.push({ name: `Прокладка кабеля ${v.label} (${v.cableNote})`, unit: "м", qty: round3(cable), formula: `${f(Lcable)}·(1+${c(CALC.cableReserve)})·${nCables} = ${f(cable)}` });
 
   /* Единственная позиция сигнальной ленты: одна лента на цепь.
      Раньше лента попадала в ведомость дважды — в монтажных и в кабельных работах. */
@@ -455,7 +468,7 @@ function lineItems(state: ProjectState): SubSection[] {
       title: LINE_SUBSECTION,
       items: [
         { name: `Монтаж концевых муфт (кабель ${v.label})`, unit: "компл", qty: ends, formula: `${nCables}·2 = ${ends}` },
-        { name: `Запас кабеля на разделку в концевых муфтах`, unit: "м", qty: round2(strip), formula: `${ends}·${CALC.cableStripLength} = ${f(strip)}` },
+        { name: `Запас кабеля на разделку в концевых муфтах`, unit: "м", qty: round2(strip), formula: `${ends}·${c(CALC.cableStripLength)} = ${f(strip)}` },
       ],
     },
   ];
@@ -491,7 +504,7 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
     const m = CALC.slopeK;
 
     if (hAvg < CALC.minDepth) {
-      warnings.push({ code: "depth-pue", text: `Глубина ${hAvg.toFixed(1)} м меньше минимальной по ПУЭ 2.3.84 (${CALC.minDepth} м)`, severity: "warn" });
+      warnings.push({ code: "depth-pue", text: `Глубина ${hAvg.toFixed(1)} м меньше минимальной по ПУЭ 2.3.84 (${c(CALC.minDepth)} м)`, severity: "warn" });
     }
 
     if (seg.type === "gnb") {

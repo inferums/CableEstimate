@@ -394,29 +394,47 @@ export function toSegments(assembled: AssembledSegment[]): Segment[] {
 }
 
 /* ================================================================
-   Парсинг Excel-файла (.xlsx) через библиотеку xlsx
+   Парсинг Excel-файла (.xlsx) через библиотеку exceljs
    ================================================================ */
+
+/** Значение ячейки в виде строки: формулы, даты и форматированный текст тоже */
+function cellText(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string") return v.trim();
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (v instanceof Date) return v.toLocaleDateString("ru-RU");
+  const o = v as { result?: unknown; text?: unknown; richText?: { text: string }[]; hyperlink?: string };
+  if (Array.isArray(o.richText)) return o.richText.map((p) => p.text).join("").trim();
+  if (o.result !== undefined) return cellText(o.result);
+  if (typeof o.text === "string") return o.text.trim();
+  return "";
+}
 
 export async function parseExcelFile(
   arrayBuffer: ArrayBuffer,
 ): Promise<ParseResult> {
-  const XLSX = await import("xlsx");
-  const wb = XLSX.read(arrayBuffer, { type: "array" });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows: (string | number | boolean)[][] = XLSX.utils.sheet_to_json(ws, {
-    header: 1,
-    defval: "",
+  const ExcelJS = (await import("exceljs")).default;
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(arrayBuffer);
+
+  const ws = wb.worksheets[0];
+  const empty: ParseResult = { headers: [], rawRows: [], separator: ";", format: "xlsx", totalLines: 0 };
+  if (!ws) return empty;
+
+  /* row.values — массив с единицы: нулевой элемент не используется */
+  const width = ws.columnCount;
+  const rows: string[][] = [];
+  ws.eachRow({ includeEmpty: false }, (row) => {
+    const values = row.values as unknown[];
+    const line: string[] = [];
+    for (let c = 1; c <= width; c++) line.push(cellText(values[c]));
+    rows.push(line);
   });
 
-  if (rows.length < 2) {
-    return { headers: [], rawRows: [], separator: ";", format: "xlsx", totalLines: 0 };
-  }
+  if (rows.length < 2) return empty;
 
-  const headers = rows[0].map((h) => String(h).trim());
-  const rawRows = rows
-    .slice(1)
-    .filter((r) => r.some((c) => c !== ""))
-    .map((r) => r.map((c) => String(c).trim()));
+  const headers = rows[0].map((h) => h.trim());
+  const rawRows = rows.slice(1).filter((r) => r.some((c) => c !== ""));
 
   return { headers, rawRows, separator: ";", format: "xlsx", totalLines: rawRows.length };
 }
@@ -426,7 +444,12 @@ export async function parseSurveyFile(
   content: string | ArrayBuffer,
   fileName: string,
 ): Promise<ParseResult> {
-  if (fileName.endsWith(".xlsx") || fileName.endsWith(".xls")) {
+  const name = fileName.toLowerCase();
+  /* Старый двоичный .xls не читается: его надо пересохранить в .xlsx */
+  if (name.endsWith(".xls")) {
+    throw new Error("Формат .xls не поддерживается — пересохраните файл как .xlsx");
+  }
+  if (name.endsWith(".xlsx")) {
     return parseExcelFile(content as ArrayBuffer);
   }
   return parseTextFile(content as string);
