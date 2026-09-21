@@ -112,13 +112,35 @@ export interface VorItem {
   formula: string;
 }
 
+/**
+ * Четыре классических раздела ведомости. Разделы фиксированы: их номера не
+ * зависят от того, какие способы прокладки встретились в проекте, иначе один и
+ * тот же вид работ получал бы в разных проектах разные номера. Способ прокладки
+ * — это подраздел внутри раздела.
+ */
+export const VOR_SECTIONS = [
+  { id: 1, title: "Земляные работы" },
+  { id: 2, title: "Каналы, трубы и конструкции" },
+  { id: 3, title: "Кабельные работы" },
+  { id: 4, title: "Благоустройство" },
+] as const;
+
+export type VorSectionId = (typeof VOR_SECTIONS)[number]["id"];
+
+export const sectionTitle = (id: VorSectionId): string =>
+  VOR_SECTIONS.find((s) => s.id === id)!.title;
+
 export interface SubSection {
+  /** Раздел ведомости, в который попадают позиции подраздела */
+  section: VorSectionId;
+  /** Подраздел — как правило, способ прокладки */
   title: string;
   items: VorItem[];
 }
 
 export interface VorRow {
-  section: number;
+  section: VorSectionId;
+  sectionTitle: string;
   subSection: string;
   name: string;
   unit: string;
@@ -126,10 +148,3 @@ export interface VorRow {
   segments: string[];
   formula: string;
 }
-
-export const VOR_SECTIONS = [
-  { id: 1, title: "Земляные работы" },
-  { id: 2, title: "Каналы, трубы и конструкции" },
-  { id: 3, title: "Кабельные работы" },
-  { id: 4, title: "Благоустройство" },
-] as const;

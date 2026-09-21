@@ -14,6 +14,8 @@ import {
 export function VorSheet({ state, vor }: { state: ProjectState; vor: VorResult }) {
   const v = VOLTAGE_META[state.voltage];
   let n = 0;
+  /* Заголовки двух уровней: раздел ведомости и способ прокладки внутри него */
+  let currentSection = 0;
   let currentSub = "";
 
   return (
@@ -96,15 +98,27 @@ export function VorSheet({ state, vor }: { state: ProjectState; vor: VorResult }
               </tbody>
             )}
             {vor.rows.map((r, ri) => {
+              const showSectionHeader = r.section !== currentSection;
+              if (showSectionHeader) {
+                currentSection = r.section;
+                currentSub = "";
+              }
               const showSubHeader = r.subSection !== currentSub;
               if (showSubHeader) currentSub = r.subSection;
               n++;
               return (
                 <tbody key={ri} className="border-t border-line/70">
+                  {showSectionHeader && (
+                    <tr className="border-t-2 border-ink/60">
+                      <td colSpan={5} className="pt-4 pb-1 font-display font-bold text-[12px] uppercase tracking-wide text-ink bg-raise/60">
+                        Раздел {r.section}. {r.sectionTitle}
+                      </td>
+                    </tr>
+                  )}
                   {showSubHeader && (
-                    <tr className="border-t-2 border-line">
-                      <td colSpan={5} className="pt-3 pb-1 font-display font-semibold text-[11px] uppercase tracking-wide text-accent-deep bg-raise/30">
-                        Раздел {r.section}. {r.subSection}
+                    <tr>
+                      <td colSpan={5} className="pt-2 pb-1 pl-3 font-display font-semibold text-[11px] uppercase tracking-wide text-accent-deep bg-raise/30">
+                        {r.subSection}
                       </td>
                     </tr>
                   )}

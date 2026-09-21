@@ -19,7 +19,9 @@ import type {
   TrenchType,
   VorItem,
   VorRow,
+  VorSectionId,
 } from "./types";
+import { sectionTitle } from "./types";
 
 /** Типы прокладки, выполняемые в открытой траншее или котловане (у них есть ширина и основание) */
 export type DugTrenchType = Exclude<TrenchType, "gnb">;
@@ -292,7 +294,12 @@ function blockInstallItems(seg: Segment, state: ProjectState): VorItem[] {
 }
 
 /* ================= генерация работ для ГНБ ================= */
-function gnbItems(seg: Segment, state: ProjectState): VorItem[] {
+/**
+ * Работы по ГНБ разделены на два раздела ведомости: бурение скважины и
+ * сопутствующие буровые жидкости — это земляные работы, а трубопровод,
+ * который в неё затягивается, — конструкции.
+ */
+function gnbItems(seg: Segment, state: ProjectState): { bore: VorItem[]; pipes: VorItem[] } {
   const p = state.params.gnb;
   const L = seg.length;
   const D = p.boreDiameter;
@@ -301,56 +308,57 @@ function gnbItems(seg: Segment, state: ProjectState): VorItem[] {
   const bores = structureCount(state);
   const pipesPerBore = totalPipes(p.pipes);
   const perBore = bores > 1 ? `·${bores} скв.` : "";
-  const items: VorItem[] = [];
+  const bore: VorItem[] = [];
+  const pipes: VorItem[] = [];
 
-  items.push({ name: `Монтаж комплекса установки ГНБ`, unit: "шт", qty: 1, formula: "1" });
+  bore.push({ name: `Монтаж комплекса установки ГНБ`, unit: "шт", qty: 1, formula: "1" });
   /* При одной скважине длина совпадает с длиной перехода — «100 = 100» не пишем */
   const boreLen = bores > 1 ? `${f(L)}${perBore} = ${f(L * bores)}` : f(L);
-  items.push({ name: `Пилотное бурение`, unit: "м", qty: round2(L * bores), formula: boreLen });
-  items.push({ name: `Расширение скважины до Ø${D} мм`, unit: "м", qty: round2(L * bores), formula: boreLen });
+  bore.push({ name: `Пилотное бурение`, unit: "м", qty: round2(L * bores), formula: boreLen });
+  bore.push({ name: `Расширение скважины до Ø${D} мм`, unit: "м", qty: round2(L * bores), formula: boreLen });
 
   for (const pe of p.pipes) {
     const pipeLen = L * pe.count * bores * 1.02;
-    items.push({ name: `Протаскивание трубы ПНД Ø${pe.diameter} мм`, unit: "м", qty: round2(pipeLen), formula: `${f(L)}·${pe.count}${perBore}·1,02 = ${f(pipeLen)}` });
-    items.push({ name: `Труба ПНД Ø${pe.diameter} мм`, unit: "м", qty: round2(pipeLen), formula: `${f(pipeLen)}` });
+    pipes.push({ name: `Протаскивание трубы ПНД Ø${pe.diameter} мм`, unit: "м", qty: round2(pipeLen), formula: `${f(L)}·${pe.count}${perBore}·1,02 = ${f(pipeLen)}` });
+    pipes.push({ name: `Труба ПНД Ø${pe.diameter} мм`, unit: "м", qty: round2(pipeLen), formula: `${f(pipeLen)}` });
 
     /* Труба приходит плетями по 13 м: на N плетей приходится N−1 стык */
     const lengths = Math.ceil(L / CALC.hdpeStickLength);
     const welds = Math.max(0, lengths - 1) * pe.count * bores;
-    items.push({ name: `Сварка ПНД труб Ø${pe.diameter} мм встык`, unit: "соед.", qty: welds, formula: `(⌈${f(L)}/${CALC.hdpeStickLength}⌉−1)·${pe.count}${perBore} = ${welds}` });
+    pipes.push({ name: `Сварка ПНД труб Ø${pe.diameter} мм встык`, unit: "соед.", qty: welds, formula: `(⌈${f(L)}/${CALC.hdpeStickLength}⌉−1)·${pe.count}${perBore} = ${welds}` });
   }
 
   const plugs = pipesPerBore * bores * 2;
-  items.push({ name: `Монтаж заглушек постоянных`, unit: "шт", qty: plugs, formula: `${pipesPerBore}${perBore}·2 = ${plugs}` });
-  items.push({ name: `Монтаж заглушек временных`, unit: "шт", qty: plugs, formula: `${pipesPerBore}${perBore}·2 = ${plugs}` });
+  pipes.push({ name: `Монтаж заглушек постоянных`, unit: "шт", qty: plugs, formula: `${pipesPerBore}${perBore}·2 = ${plugs}` });
+  pipes.push({ name: `Монтаж заглушек временных`, unit: "шт", qty: plugs, formula: `${pipesPerBore}${perBore}·2 = ${plugs}` });
 
   /* Стяжка охватывает весь пучок в одном сечении, а не каждый кабель по
      отдельности, и ставится с шагом. Пучок свой у каждой скважины. */
   const ties = Math.ceil(L / CALC.cableTieStep) * bores;
-  items.push({ name: `Монтаж стяжки кабельной l=2000 мм`, unit: "шт", qty: ties, formula: `⌈${f(L)}/${CALC.cableTieStep}⌉${perBore} = ${ties}` });
+  pipes.push({ name: `Монтаж стяжки кабельной l=2000 мм`, unit: "шт", qty: ties, formula: `⌈${f(L)}/${CALC.cableTieStep}⌉${perBore} = ${ties}` });
 
   /* Тяговый трос — один на протяжку, длиной в скважину плюс запас с обеих сторон */
   const ropeLen = (L * 1.02 + 2 * CALC.ropeSlack) * bores;
-  items.push({ name: `Синтетический трос`, unit: "м", qty: round2(ropeLen), formula: `(${f(L)}·1,02+2·${CALC.ropeSlack})${perBore} = ${f(ropeLen)}` });
+  pipes.push({ name: `Синтетический трос`, unit: "м", qty: round2(ropeLen), formula: `(${f(L)}·1,02+2·${CALC.ropeSlack})${perBore} = ${f(ropeLen)}` });
 
   /* Раствор и реагенты — на скважину: 8 м³ на замес плюс объём скважины с запасом 10% */
   const slurryVol = (8 + 0.785 * Math.pow(D / 1000, 2) * (L + 0.1 * L)) * bores;
-  items.push({ name: `Буровой раствор`, unit: "м³", qty: round3(slurryVol), formula: `(8+0,785·${f(D / 1000, 2)}²·(${f(L)}+0,1·${f(L)}))${perBore} = ${f(slurryVol, 3)}` });
+  bore.push({ name: `Буровой раствор`, unit: "м³", qty: round3(slurryVol), formula: `(8+0,785·${f(D / 1000, 2)}²·(${f(L)}+0,1·${f(L)}))${perBore} = ${f(slurryVol, 3)}` });
 
   const bentoniteKg = L * 337.4 * bores;
-  items.push({ name: `Порошок бентонитовый`, unit: "кг", qty: round2(bentoniteKg), formula: `${f(L)}·337,4${perBore} = ${f(bentoniteKg)}` });
+  bore.push({ name: `Порошок бентонитовый`, unit: "кг", qty: round2(bentoniteKg), formula: `${f(L)}·337,4${perBore} = ${f(bentoniteKg)}` });
 
   const polymerKg = L * 20.5 * bores;
-  items.push({ name: `Состав полимерный для кондиционирования грунтов`, unit: "кг", qty: round2(polymerKg), formula: `${f(L)}·20,5${perBore} = ${f(polymerKg)}` });
+  bore.push({ name: `Состав полимерный для кондиционирования грунтов`, unit: "кг", qty: round2(polymerKg), formula: `${f(L)}·20,5${perBore} = ${f(polymerKg)}` });
 
   const pipeAreas = p.pipes.reduce((s, pe) => s + (Math.PI / 4) * Math.pow(pe.diameter / 1000, 2) * pe.count, 0);
   const slurryPump = L * pipeAreas * bores;
-  items.push({ name: `Откачка буровых жидкостей`, unit: "м³", qty: round3(slurryPump), formula: `${f(L)}·${f(pipeAreas, 4)}${perBore} = ${f(slurryPump, 3)}` });
-  items.push({ name: `Утилизация бурового шлама`, unit: "м³", qty: round3(slurryPump), formula: `${f(slurryPump, 3)}` });
+  bore.push({ name: `Откачка буровых жидкостей`, unit: "м³", qty: round3(slurryPump), formula: `${f(L)}·${f(pipeAreas, 4)}${perBore} = ${f(slurryPump, 3)}` });
+  bore.push({ name: `Утилизация бурового шлама`, unit: "м³", qty: round3(slurryPump), formula: `${f(slurryPump, 3)}` });
 
-  items.push({ name: `Демонтаж комплекса установки ГНБ`, unit: "шт", qty: 1, formula: "1" });
+  bore.push({ name: `Демонтаж комплекса установки ГНБ`, unit: "шт", qty: 1, formula: "1" });
 
-  return items;
+  return { bore, pipes };
 }
 
 /* ================= генерация работ для муфтового поля ================= */
@@ -432,6 +440,9 @@ function cableItems(seg: Segment, state: ProjectState): VorItem[] {
 /** Пометка в графе «участки» для позиций, относящихся к линии, а не к участку */
 export const LINE_LABEL = "линия";
 
+/** Подраздел для работ по концам линии — они не привязаны к способу прокладки */
+export const LINE_SUBSECTION = "Линия целиком";
+
 function lineItems(state: ProjectState): SubSection[] {
   const v = VOLTAGE_META[state.voltage];
   const nCables = state.chains * v.cablesPerChain;
@@ -440,7 +451,8 @@ function lineItems(state: ProjectState): SubSection[] {
   const strip = ends * CALC.cableStripLength;
   return [
     {
-      title: "Кабельные работы",
+      section: 3,
+      title: LINE_SUBSECTION,
       items: [
         { name: `Монтаж концевых муфт (кабель ${v.label})`, unit: "компл", qty: ends, formula: `${nCables}·2 = ${ends}` },
         { name: `Запас кабеля на разделку в концевых муфтах`, unit: "м", qty: round2(strip), formula: `${ends}·${CALC.cableStripLength} = ${f(strip)}` },
@@ -456,6 +468,9 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
      например, лотков на 35 кВ не бывает */
   const allowed = isTypeAllowed(state.voltage, seg.type);
   const active = allowed && state.types.includes(seg.type);
+  /* Подраздел одинаков во всех разделах: это способ прокладки. Раздел задаёт,
+     к какому виду работ относится позиция. */
+  const subTitle = TRENCH_META[seg.type].label;
   const L = Math.max(0, seg.length || 0);
   const hAvg = ((seg.h1 || 0) + (seg.h2 || 0)) / 2;
   const subSections: SubSection[] = [];
@@ -480,8 +495,9 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
     }
 
     if (seg.type === "gnb") {
-      const gnbItemsList = gnbItems(seg, state);
-      subSections.push({ title: `ГНБ`, items: gnbItemsList });
+      const gnb = gnbItems(seg, state);
+      subSections.push({ section: 1, title: subTitle, items: gnb.bore });
+      subSections.push({ section: 2, title: subTitle, items: gnb.pipes });
 
       const D = state.params.gnb.boreDiameter;
       /* У каждой скважины свои входной и выходной приямки */
@@ -524,28 +540,30 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
       }
 
       const earthItemsList = earthworkItems(B, hAvg, L, structVol, lp.beddingType, lp.bedding);
-      subSections.push({ title: `Земляные работы. Прокладка в ж.б.лотках`, items: earthItemsList });
-      subSections.push({ title: `Монтаж кабельных каналов`, items: lotokInstallItems(seg, state) });
+      subSections.push({ section: 1, title: subTitle, items: earthItemsList });
+      subSections.push({ section: 2, title: subTitle, items: lotokInstallItems(seg, state) });
     } else if (seg.type === "open") {
       const op = state.params.open;
       const earthItemsList = earthworkItems(B, hAvg, L, structVol, op.beddingType, op.bedding);
-      subSections.push({ title: `Земляные работы. Открытая траншея`, items: earthItemsList });
-      subSections.push({ title: `Монтаж конструкций`, items: openInstallItems(seg, state) });
+      subSections.push({ section: 1, title: subTitle, items: earthItemsList });
+      subSections.push({ section: 2, title: subTitle, items: openInstallItems(seg, state) });
       note = `открытая траншея B=${B} м`;
     } else if (seg.type === "block") {
       const bp = state.params.block;
       const n = structureCount(state);
       structVol = pipesVolume(bp.pipes, L) * n;
       const earthItemsList = earthworkItems(B, hAvg, L, structVol, bp.beddingType, bp.bedding);
-      subSections.push({ title: `Земляные работы. Трубный блок`, items: earthItemsList });
-      subSections.push({ title: `Монтаж трубного блока`, items: blockInstallItems(seg, state) });
+      subSections.push({ section: 1, title: subTitle, items: earthItemsList });
+      subSections.push({ section: 2, title: subTitle, items: blockInstallItems(seg, state) });
       note = n > 1
         ? `${n} блока по ${totalPipes(bp.pipes)} труб, по блоку на цепь; B=${B} м`
         : `блок B=${B} м; труб: ${totalPipes(bp.pipes)} шт`;
     } else if (seg.type === "splice") {
       const { earth, install } = spliceItems(seg, state);
-      subSections.push({ title: `Земляные работы. Муфтовое поле`, items: earth });
-      subSections.push({ title: `Монтаж муфт`, items: install });
+      subSections.push({ section: 1, title: subTitle, items: earth });
+      /* Соединительные муфты — кабельные работы, как и концевые: в разные
+         разделы они попадать не должны */
+      subSections.push({ section: 3, title: subTitle, items: install });
       excavation = B * hAvg * L;
       note = `котлован B=${B} м`;
     }
@@ -574,12 +592,12 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
     // Кабельные работы — отдельный подраздел
     const cableItemsList = cableItems(seg, state);
     if (cableItemsList.length > 0) {
-      subSections.push({ title: `Кабельные работы`, items: cableItemsList });
+      subSections.push({ section: 3, title: subTitle, items: cableItemsList });
     }
 
     const surfItemsList = surfaceItems(seg, state);
     if (surfItemsList.length > 0) {
-      subSections.push({ title: `Благоустройство`, items: surfItemsList });
+      subSections.push({ section: 4, title: subTitle, items: surfItemsList });
     }
   } else if (!active && L > 0) {
     warnings.push(
@@ -637,9 +655,14 @@ export function buildVor(state: ProjectState): VorResult {
         }
         if (item.qty <= 0) continue;
 
-        // Ищем существующую строку с таким же подразделом + наименованием + единицей
+        /* Ищем существующую строку: подраздел повторяется в разных разделах,
+           поэтому номер раздела обязан входить в ключ. */
         const existing = rows.find(
-          (r) => r.subSection === sub.title && r.name === item.name && r.unit === item.unit,
+          (r) =>
+            r.section === sub.section &&
+            r.subSection === sub.title &&
+            r.name === item.name &&
+            r.unit === item.unit,
         );
 
         if (existing) {
@@ -648,7 +671,8 @@ export function buildVor(state: ProjectState): VorResult {
           if (item.formula) existing.formula += (existing.formula ? "; " : "") + `уч.${label}: ${item.formula}`;
         } else {
           rows.push({
-            section: 0, // номер присвоим позже
+            section: sub.section,
+            sectionTitle: sectionTitle(sub.section),
             subSection: sub.title,
             name: item.name,
             unit: item.unit,
@@ -671,20 +695,20 @@ export function buildVor(state: ProjectState): VorResult {
     addItems(lineItems(state), LINE_LABEL);
   }
 
-  // Группируем по subSection и нумеруем разделы последовательно
-  const sectionOrder: string[] = [];
+  /* Разделы фиксированы, а подразделы внутри раздела идут в том порядке, в
+     котором встретились участки: проектировщик читает ведомость в том же
+     порядке, в котором задавал трассу. */
+  const subOrder: string[] = [];
   for (const r of rows) {
-    if (!sectionOrder.includes(r.subSection)) sectionOrder.push(r.subSection);
+    const key = `${r.section}|${r.subSection}`;
+    if (!subOrder.includes(key)) subOrder.push(key);
   }
 
-  for (const r of rows) {
-    r.section = sectionOrder.indexOf(r.subSection) + 1;
-  }
-
-  // Сортируем строки: сначала по subSection, затем по имени
   rows.sort((a, b) => {
-    const secDiff = sectionOrder.indexOf(a.subSection) - sectionOrder.indexOf(b.subSection);
-    if (secDiff !== 0) return secDiff;
+    if (a.section !== b.section) return a.section - b.section;
+    const subDiff =
+      subOrder.indexOf(`${a.section}|${a.subSection}`) - subOrder.indexOf(`${b.section}|${b.subSection}`);
+    if (subDiff !== 0) return subDiff;
     return a.name.localeCompare(b.name, "ru");
   });
 

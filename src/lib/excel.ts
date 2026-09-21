@@ -43,17 +43,24 @@ export async function exportVorExcel(state: ProjectState, vor: VorResult) {
   merges.push({ s: { r: 10, c: 0 }, e: { r: 10, c: 3 } });
   merges.push({ s: { r: 11, c: 0 }, e: { r: 11, c: 3 } });
 
-  // === Данные — по разделам (подразделам) ===
-  let currentSection = "";
+  // === Данные — по разделам, внутри раздела по способам прокладки ===
+  let currentSection = 0;
+  let currentSub = "";
   let n = 0;
 
   for (const row of vor.rows) {
-    // Если подраздел сменился — добавляем заголовок раздела
-    if (row.subSection !== currentSection) {
-      currentSection = row.subSection;
+    if (row.section !== currentSection) {
+      currentSection = row.section;
+      currentSub = "";
       const sectionRow = aoa.length;
-      aoa.push([`Раздел: ${row.section}. ${currentSection}`, "", "", "", ""]);
+      aoa.push([`Раздел ${row.section}. ${row.sectionTitle}`, "", "", "", ""]);
       merges.push({ s: { r: sectionRow, c: 0 }, e: { r: sectionRow, c: 4 } });
+    }
+    if (row.subSection !== currentSub) {
+      currentSub = row.subSection;
+      const subRow = aoa.length;
+      aoa.push([`    ${currentSub}`, "", "", "", ""]);
+      merges.push({ s: { r: subRow, c: 0 }, e: { r: subRow, c: 4 } });
     }
 
     n++;
