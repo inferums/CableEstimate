@@ -1,4 +1,4 @@
-import { DEFAULT_SURFACES } from "../data/catalogs";
+import { DEFAULT_SOIL, DEFAULT_SURFACES } from "../data/catalogs";
 import type { ProjectState, Segment, TrenchType, VoltageClass } from "../lib/types";
 
 /**
@@ -14,6 +14,7 @@ export function project(over: {
   length?: number;
   depth?: number;
   segments?: Segment[];
+  soil?: { group: number; wetShare: number };
 }): ProjectState {
   const width = over.width ?? 4.2;
   const length = over.length ?? 100;
@@ -23,6 +24,7 @@ export function project(over: {
     projectCode: "ТЕСТ",
     voltage: over.voltage ?? "0.4-10",
     chains: over.chains ?? 1,
+    soil: over.soil ?? { ...DEFAULT_SOIL },
     types: ["lotok", "open", "block", "gnb", "splice"],
     params: {
       gnb: { boreDiameter: 300, pipes: [{ id: "p1", diameter: 110, count: 4 }] },

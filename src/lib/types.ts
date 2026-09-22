@@ -98,12 +98,21 @@ export interface CableSpec {
   designLength: number;
 }
 
+/** Грунт — один на всю линию */
+export interface SoilParams {
+  /** Группа грунта по трудности разработки (ГЭСН 01), 1–6 */
+  group: number;
+  /** Доля мокрого грунта в разработке, % */
+  wetShare: number;
+}
+
 export interface ProjectState {
   projectName: string;
   projectCode: string;
   voltage: VoltageClass;
   types: TrenchType[];
   chains: number;
+  soil: SoilParams;
   params: ParamsMap;
   segments: Segment[];
   surfaces: Surface[];

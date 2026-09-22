@@ -32,8 +32,8 @@ import { SurveyImportWizard } from "./components/survey-wizard";
 import { PlanView, ProfileView } from "./components/route-viz";
 import { ComparisonTable } from "./components/comparison";
 import { TrenchDiagram } from "./components/diagrams";
-import { DEFAULT_SURFACES, TRENCH_META, VOLTAGE_META } from "./data/catalogs";
-import { buildVor, structureCount } from "./lib/calc";
+import { DEFAULT_SOIL, DEFAULT_SURFACES, TRENCH_META, VOLTAGE_META } from "./data/catalogs";
+import { buildVor, SOIL_GROUP_MAX, SOIL_GROUP_MIN, structureCount } from "./lib/calc";
 import { exportVorExcel } from "./lib/excel";
 import { downloadDxf } from "./lib/dxf-export";
 import { exportJsonFile, importJsonFile, loadFromLocal, saveToLocal } from "./lib/storage";
@@ -61,6 +61,7 @@ function defaultState(): ProjectState {
     voltage: "0.4-10",
     types: ["lotok", "open", "block", "gnb", "splice"],
     chains: 2,
+    soil: { ...DEFAULT_SOIL },
     params: {
       gnb: { boreDiameter: 300, pipes: [{ id: "p1", diameter: 110, count: 4 }] },
       block: { width: 0.8, bedding: 0.1, beddingType: "sand", pipes: [{ id: "p2", diameter: 160, count: 2 }] },
@@ -475,6 +476,36 @@ export default function App() {
                         step={1}
                         min={1}
                         suffix="цеп."
+                      />
+                    </label>
+                  </div>
+                  {/* Грунт задаётся один на всю линию: группа идёт в наименования
+                      расценок, доля мокрого делит разработку на сухой и мокрый */}
+                  <div className="mt-3 grid sm:grid-cols-2 gap-3">
+                    <label className="block">
+                      <span className="block mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-mut">
+                        Группа грунта
+                      </span>
+                      <NumInput
+                        value={state.soil.group}
+                        onChange={(n) => patch({ soil: { ...state.soil, group: Math.min(SOIL_GROUP_MAX, Math.max(SOIL_GROUP_MIN, Math.round(n))) } })}
+                        step={1}
+                        min={SOIL_GROUP_MIN}
+                        max={SOIL_GROUP_MAX}
+                        suffix="гр."
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="block mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-mut">
+                        Мокрый грунт на линии
+                      </span>
+                      <NumInput
+                        value={state.soil.wetShare}
+                        onChange={(n) => patch({ soil: { ...state.soil, wetShare: Math.min(100, Math.max(0, n)) } })}
+                        step={5}
+                        min={0}
+                        max={100}
+                        suffix="%"
                       />
                     </label>
                   </div>

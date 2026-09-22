@@ -11,6 +11,7 @@ import type { ProjectState } from "./types";
  * до перехода на серию, поэтому он обязан открываться без потерь.
  */
 function legacyProject(over: Partial<ProjectState> = {}): ProjectState {
+  /* soil в версиях 1–2 не было — поэтому приведение типа */
   return {
     projectName: "Старый проект",
     projectCode: "24-07-КЛ",
@@ -30,7 +31,7 @@ function legacyProject(over: Partial<ProjectState> = {}): ProjectState {
     ],
     surfaces: [{ id: "lawn", name: "Газон", layers: [{ name: "Грунт", thickness: 20 }] }],
     ...over,
-  };
+  } as ProjectState;
 }
 
 describe("поддерживаемые версии", () => {

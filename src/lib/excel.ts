@@ -249,6 +249,8 @@ function sheetInput(wb: ExcelJS.Workbook, state: ProjectState) {
     ["Класс напряжения", v.label],
     ["Цепей в траншее", state.chains],
     ["Кабелей на цепь", v.cablesPerChain],
+    ["Группа грунта", state.soil.group],
+    ["Мокрый грунт на линии", `${state.soil.wetShare}%`],
     ["Типы прокладки", state.types.map((t) => TRENCH_META[t].label).join(", ")],
   ];
   for (const [label, value] of params) {

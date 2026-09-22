@@ -19,6 +19,7 @@ import type {
   TrenchType,
   VorItem,
   VorRow,
+  SoilParams,
 } from "./types";
 import { sectionTitle } from "./types";
 
@@ -170,25 +171,41 @@ const trenchBalance = (B: number, hAvg: number, L: number, structVol: number, be
   earthBalance(trenchVolume(B, hAvg, L, CALC.slopeK), B * bedding * L, B * CALC.topFill * L, structVol);
 
 /* ================= генерация земляных работ (общий паттерн) ================= */
-function earthworkItems(B: number, hAvg: number, L: number, structVol: number, beddingType: "sand" | "pgs", bedding: number): VorItem[] {
+/** Группа грунтов по ГЭСН 01 */
+export const SOIL_GROUP_MIN = 1;
+export const SOIL_GROUP_MAX = 6;
+
+/**
+ * Деление разработки на сухой и мокрый грунт. Доля задаётся одна на всю
+ * линию, в процентах; доли считаются через сотни, чтобы 1 − 0,33 не
+ * превращалось в 0,6699999.
+ */
+export function soilSplit(soil: SoilParams | undefined) {
+  const wetPct = Math.min(100, Math.max(0, Number.isFinite(soil?.wetShare) ? soil!.wetShare : 50));
+  const g = Math.min(SOIL_GROUP_MAX, Math.max(SOIL_GROUP_MIN, Math.round(soil?.group ?? 2)));
+  return { wet: wetPct / 100, dry: (100 - wetPct) / 100, group: g };
+}
+
+function earthworkItems(B: number, hAvg: number, L: number, structVol: number, beddingType: "sand" | "pgs", bedding: number, soil: SoilParams): VorItem[] {
   const b = trenchBalance(B, hAvg, L, structVol, bedding);
   const mat = beddingType === "sand" ? "Песок" : "ПГС";
 
-  /* Механизированная разработка делится по назначению грунта, а внутри — поровну
-     на сухой и мокрый; ручная доработка дна учитывается отдельной расценкой. */
+  /* Механизированная разработка делится по назначению грунта, а внутри — на
+     сухой и мокрый по доле, заданной для всей линии; ручная доработка дна
+     учитывается отдельной расценкой. */
   const Vmech = Math.max(0, b.total - b.handWork);
   const toDump = Vmech * (b.total > 0 ? b.backfill / b.total : 0);
   const toTruck = Vmech - toDump;
-  const handHalf = b.handWork * 0.5;
+  const { dry, wet, group: g } = soilSplit(soil);
 
   const items: VorItem[] = [];
 
-  items.push({ name: `Разработка сухого грунта экскаватором с ковшом 0,5 м³ в отвал, группа грунтов 2`, unit: "м³", qty: round3(toDump * 0.5), formula: `${f(toDump,3)}·0,5 = ${f(toDump * 0.5,3)}` });
-  items.push({ name: `Разработка мокрого грунта экскаватором с ковшом 0,5 м³ в отвал, группа грунтов 2`, unit: "м³", qty: round3(toDump * 0.5), formula: `${f(toDump,3)}·0,5 = ${f(toDump * 0.5,3)}` });
-  items.push({ name: `Разработка сухого грунта 2 гр. с погрузкой на автомобили-самосвалы`, unit: "м³", qty: round3(toTruck * 0.5), formula: `${f(toTruck,3)}·0,5 = ${f(toTruck * 0.5,3)}` });
-  items.push({ name: `Разработка мокрого грунта 2 гр. с погрузкой на автомобили-самосвалы`, unit: "м³", qty: round3(toTruck * 0.5), formula: `${f(toTruck,3)}·0,5 = ${f(toTruck * 0.5,3)}` });
-  items.push({ name: `Зачистка котлована вручную в сухих грунтах 2 группы`, unit: "м³", qty: round3(handHalf), formula: `${f(b.total,3)}·${c(CALC.handWorkShare)}·0,5 = ${f(handHalf,3)}` });
-  items.push({ name: `Зачистка котлована вручную во влажных грунтах 2 группы`, unit: "м³", qty: round3(handHalf), formula: `${f(b.total,3)}·${c(CALC.handWorkShare)}·0,5 = ${f(handHalf,3)}` });
+  items.push({ name: `Разработка сухого грунта экскаватором с ковшом 0,5 м³ в отвал, группа грунтов ${g}`, unit: "м³", qty: round3(toDump * dry), formula: `${f(toDump,3)}·${c(dry)} = ${f(toDump * dry,3)}` });
+  items.push({ name: `Разработка мокрого грунта экскаватором с ковшом 0,5 м³ в отвал, группа грунтов ${g}`, unit: "м³", qty: round3(toDump * wet), formula: `${f(toDump,3)}·${c(wet)} = ${f(toDump * wet,3)}` });
+  items.push({ name: `Разработка сухого грунта ${g} гр. с погрузкой на автомобили-самосвалы`, unit: "м³", qty: round3(toTruck * dry), formula: `${f(toTruck,3)}·${c(dry)} = ${f(toTruck * dry,3)}` });
+  items.push({ name: `Разработка мокрого грунта ${g} гр. с погрузкой на автомобили-самосвалы`, unit: "м³", qty: round3(toTruck * wet), formula: `${f(toTruck,3)}·${c(wet)} = ${f(toTruck * wet,3)}` });
+  items.push({ name: `Зачистка котлована вручную в сухих грунтах ${g} группы`, unit: "м³", qty: round3(b.handWork * dry), formula: `${f(b.total,3)}·${c(CALC.handWorkShare)}·${c(dry)} = ${f(b.handWork * dry,3)}` });
+  items.push({ name: `Зачистка котлована вручную во влажных грунтах ${g} группы`, unit: "м³", qty: round3(b.handWork * wet), formula: `${f(b.total,3)}·${c(CALC.handWorkShare)}·${c(wet)} = ${f(b.handWork * wet,3)}` });
 
   /* На вывоз идёт ровно вытесненный объём, с учётом разрыхления при погрузке */
   const hauled = b.surplus * CALC.soilLoosen;
@@ -383,8 +400,11 @@ function spliceItems(seg: Segment, state: ProjectState): { earth: VorItem[]; ins
 
   const p = state.params.splice;
   const b = earthBalance(B * hAvg * L, B * p.bedding * L, 0, 0);
+  const sp = soilSplit(state.soil);
   const earth: VorItem[] = [
-    { name: `Разработка грунта в котловане экскаватором`, unit: "м³", qty: round3(b.total), formula: `${f(B)}·${f(hAvg)}·${f(L)} = ${f(b.total, 3)}` },
+    /* Котлован делится на сухой и мокрый грунт по той же доле, что и вся линия */
+    { name: `Разработка сухого грунта в котловане экскаватором, группа грунтов ${sp.group}`, unit: "м³", qty: round3(b.total * sp.dry), formula: `${f(B)}·${f(hAvg)}·${f(L)}·${c(sp.dry)} = ${f(b.total * sp.dry, 3)}` },
+    { name: `Разработка мокрого грунта в котловане экскаватором, группа грунтов ${sp.group}`, unit: "м³", qty: round3(b.total * sp.wet), formula: `${f(B)}·${f(hAvg)}·${f(L)}·${c(sp.wet)} = ${f(b.total * sp.wet, 3)}` },
     { name: `Устройство основания из ${beddingName(p.beddingType)} (h=${Math.round(p.bedding * 100)} см) с уплотнением`, unit: "м³", qty: round3(b.bedding), formula: `${f(B)}·${f(p.bedding)}·${f(L)} = ${f(b.bedding, 3)}` },
     { name: `Обратная засыпка котлована местным грунтом`, unit: "м³", qty: round3(b.backfill), formula: `${f(b.total, 3)}−${f(b.bedding, 3)} = ${f(b.backfill, 3)}` },
     { name: `Вывоз лишнего грунта на полигон`, unit: "т", qty: round3(b.surplus * CALC.soilLoosen * CALC.soilDensity), formula: `${f(b.surplus, 3)}·${c(CALC.soilLoosen)}·${c(CALC.soilDensity)} = ${f(b.surplus * CALC.soilLoosen * CALC.soilDensity, 3)}` },
@@ -550,12 +570,12 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
         warnings.push({ code: "tray-deep", text: `Глубина ${hAvg.toFixed(2)} м меньше высоты лотка с плитой ${trayOuterH.toFixed(2)} м`, severity: "warn" });
       }
 
-      const earthItemsList = earthworkItems(B, hAvg, L, structVol, lp.beddingType, lp.bedding);
+      const earthItemsList = earthworkItems(B, hAvg, L, structVol, lp.beddingType, lp.bedding, state.soil);
       subSections.push({ section: 1, title: subTitle, items: earthItemsList });
       subSections.push({ section: 2, title: subTitle, items: lotokInstallItems(seg, state) });
     } else if (seg.type === "open") {
       const op = state.params.open;
-      const earthItemsList = earthworkItems(B, hAvg, L, structVol, op.beddingType, op.bedding);
+      const earthItemsList = earthworkItems(B, hAvg, L, structVol, op.beddingType, op.bedding, state.soil);
       subSections.push({ section: 1, title: subTitle, items: earthItemsList });
       subSections.push({ section: 2, title: subTitle, items: openInstallItems(seg, state) });
       note = `открытая траншея B=${B} м`;
@@ -563,7 +583,7 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
       const bp = state.params.block;
       const n = structureCount(state);
       structVol = pipesVolume(bp.pipes, L) * n;
-      const earthItemsList = earthworkItems(B, hAvg, L, structVol, bp.beddingType, bp.bedding);
+      const earthItemsList = earthworkItems(B, hAvg, L, structVol, bp.beddingType, bp.bedding, state.soil);
       subSections.push({ section: 1, title: subTitle, items: earthItemsList });
       subSections.push({ section: 2, title: subTitle, items: blockInstallItems(seg, state) });
       note = n > 1

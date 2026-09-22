@@ -1,4 +1,4 @@
-import { DEFAULT_SURFACES, PLATES, TRAYS } from "../data/catalogs";
+import { DEFAULT_SOIL, DEFAULT_SURFACES, PLATES, TRAYS } from "../data/catalogs";
 import type { PlateMark, TrayMark } from "../data/catalogs";
 import type { ProjectState } from "./types";
 
@@ -9,11 +9,12 @@ import type { ProjectState } from "./types";
  * 2 — справочник лотков и плит переведён на серию 3.006.1-2.87: габариты марок
  *     изменились, часть марок плит (П6-8, П7-8, П6д-8, П7д-8) в серии
  *     отсутствует. Плюс в параметрах лотка появились толщины слоёв.
+ * 3 — параметры грунта на всю линию: группа и доля мокрого грунта.
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /** Версии, из которых умеем открывать проект */
-const SUPPORTED_VERSIONS = [1, 2];
+const SUPPORTED_VERSIONS = [1, 2, 3];
 
 export interface MigrationResult {
   state: ProjectState;
@@ -72,6 +73,16 @@ export function migrateProject(input: ProjectState, fromVersion: number): Migrat
   if (!Number.isFinite(state.chains) || state.chains < 1) {
     state.chains = 1;
     notes.push("Число цепей не задано — принято 1.");
+  }
+
+  /* --- грунт: до версии 3 его не было, считалось как 2 группа и 50% мокрого.
+     Подставляем ровно это, поэтому объёмы не меняются и сообщать не о чем. */
+  const soil = state.soil as Partial<typeof DEFAULT_SOIL> | undefined;
+  if (!soil || !Number.isFinite(soil.group) || !Number.isFinite(soil.wetShare)) {
+    state.soil = {
+      group: Number.isFinite(soil?.group) ? soil!.group! : DEFAULT_SOIL.group,
+      wetShare: Number.isFinite(soil?.wetShare) ? soil!.wetShare! : DEFAULT_SOIL.wetShare,
+    };
   }
 
   /* --- параметры лотка --- */
