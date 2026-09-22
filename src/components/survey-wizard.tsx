@@ -11,7 +11,7 @@ import {
   toSegments,
   type AssembledSegment,
 } from "../lib/survey-import";
-import type { Segment, Surface, SurveyMeta, TrenchType } from "../lib/types";
+import type { Segment, Surface, SurveyMeta } from "../lib/types";
 import { TRENCH_META } from "../data/catalogs";
 import { Modal, BtnPrimary, BtnGhost } from "./ui";
 
@@ -143,7 +143,6 @@ export function SurveyImportWizard({ surfaces, onClose, onImport }: Props) {
   };
 
   const pr = ws.parseResult;
-  const colCount = pr?.headers.length ?? 0;
 
   return (
     <Modal

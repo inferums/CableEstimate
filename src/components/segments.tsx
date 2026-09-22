@@ -64,7 +64,7 @@ function SortableRow({
     transition,
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 50 : undefined,
-    position: (isDragging ? "relative" : undefined) as any,
+    position: isDragging ? ("relative" as const) : undefined,
   };
 
   const handle = <DragHandle />;

@@ -7,10 +7,10 @@ import type { ParamsMap, Surface, TrenchType } from "../lib/types";
 const INK = "#3F3F46";
 const MUT = "#71717A";
 const ACC = "#2563EB";
-const SOIL = "#F2F2F3";
 
 const clamp = (n: number, a: number, b: number) => Math.min(b, Math.max(a, n));
-const uid = (base: string) => `${base}${useId().replace(/:/g, "")}`;
+/* Уникальный id для SVG-заливок. Это хук: вызывать только на верхнем уровне компонента */
+const useUid = (base: string) => `${base}${useId().replace(/:/g, "")}`;
 
 function Arrow({ x, y, dir }: { x: number; y: number; dir: "l" | "r" | "u" | "d" }) {
   const s = 4;
@@ -154,7 +154,7 @@ function Pipes({ pipes, cx, baseY, maxW }: { pipes: { diameter: number; count: n
 
 /* ============================ ГНБ ============================ */
 function GnbDiagram({ bore, pipes }: { bore: number; pipes: { diameter: number; count: number }[] }) {
-  const soilId = uid("soil");
+  const soilId = useUid("soil");
   const yG = 44, yB = 138;
   const rb = clamp(15 + ((bore - 200) / 800) * 26, 15, 41);
   const n = pipes.reduce((s, p) => s + p.count, 0);
@@ -204,7 +204,7 @@ function GnbDiagram({ bore, pipes }: { bore: number; pipes: { diameter: number; 
 
 /* ======================== трубный блок ======================= */
 function BlockDiagram({ p, structures }: { p: ParamsMap["block"]; structures: number }) {
-  const sand = uid("sand");
+  const sand = useUid("sand");
   const t = Trench(p.width);
   const hb = clamp(p.bedding * 220, 8, 26);
   /* На 110–220 кВ каждая цепь идёт в своём трубном блоке */
@@ -303,10 +303,9 @@ function LotokDiagram({ p, cables, structures }: { p: ParamsMap["lotok"]; cables
   const yG = Y(0);
   const yEnd = Y(H);
 
-  const soilSideId = uid("ss");
-  const soilTrId   = uid("st");
-  const concId     = uid("c");
-  const pgsId      = uid("p");
+  const soilTrId   = useUid("st");
+  const concId     = useUid("c");
+  const pgsId      = useUid("p");
 
   const showCables = Math.min(cablesPerTray, 6);
   const cableR = Math.max(2.5, Math.min(8, cavityW / (showCables * 3)));
@@ -461,8 +460,8 @@ function LotokDiagram({ p, cables, structures }: { p: ParamsMap["lotok"]; cables
 
 /* ===================== открытый способ ======================= */
 function OpenDiagram({ p, cables }: { p: ParamsMap["open"]; cables: number }) {
-  const sand = uid("sand");
-  const conc = uid("conc");
+  const sand = useUid("sand");
+  const conc = useUid("conc");
   const t = Trench(p.width);
   const hb = clamp(p.bedding * 220, 8, 24);
   const bedTop = 158 - hb;
@@ -508,7 +507,7 @@ function OpenDiagram({ p, cables }: { p: ParamsMap["open"]; cables: number }) {
 
 /* ======================= муфтовое поле ======================= */
 function SpliceDiagram({ p }: { p: ParamsMap["splice"] }) {
-  const sand = uid("sand");
+  const sand = useUid("sand");
   const t = Trench(Math.max(p.width, 1.2), 42, 150);
   const hb = clamp(p.bedding * 220, 8, 24);
   const bedTop = 150 - hb;
@@ -571,14 +570,14 @@ function patternFor(name: string, id: string) {
   else if (n.includes("пес") || n.includes("пгс")) inner = <><circle cx="2.5" cy="2.5" r="0.8" fill="#A1A1AA" /><circle cx="7" cy="6" r="0.8" fill="#A1A1AA" /></>;
   else inner = <path d="M0 3h5M4 7h5" stroke="#A1A1AA" strokeWidth="0.8" />;
   return (
-    <pattern id={id} width="10" height="10" patternUnits="userSpaceOnUse">
+    <pattern key={id} id={id} width="10" height="10" patternUnits="userSpaceOnUse">
       {inner}
     </pattern>
   );
 }
 
 export function SurfaceDiagram({ surface, className = "" }: { surface: Surface; className?: string }) {
-  const base = uid("sf");
+  const base = useUid("sf");
   const layers = surface.layers.filter((l) => l.thickness > 0);
   const total = layers.reduce((s, l) => s + l.thickness, 0) || 1;
   const H = 150;

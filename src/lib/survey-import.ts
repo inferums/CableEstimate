@@ -111,11 +111,15 @@ export function autoDetectColumns(headers: string[]): Partial<ColumnMapping> {
   };
   headers.forEach((h, i) => {
     const hl = h.toLowerCase().trim();
-    take("nameIdx", NAME_HEADERS, hl, i) ||
-      take("xIdx", X_HEADERS, hl, i) ||
-      take("yIdx", Y_HEADERS, hl, i) ||
-      take("zIdx", Z_HEADERS, hl, i) ||
-      take("codeIdx", CODE_HEADERS, hl, i);
+    /* Заголовок занимает первую подходящую свободную колонку */
+    const rules: [keyof ColumnMapping, string[]][] = [
+      ["nameIdx", NAME_HEADERS],
+      ["xIdx", X_HEADERS],
+      ["yIdx", Y_HEADERS],
+      ["zIdx", Z_HEADERS],
+      ["codeIdx", CODE_HEADERS],
+    ];
+    rules.some(([key, list]) => take(key, list, hl, i));
   });
   return result;
 }

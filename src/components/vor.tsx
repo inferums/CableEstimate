@@ -1,14 +1,6 @@
-import { CALC, TRENCH_META, VOLTAGE_META } from "../data/catalogs";
+import { CALC, VOLTAGE_META } from "../data/catalogs";
 import { fmt, type VorResult } from "../lib/calc";
 import { type ProjectState } from "../lib/types";
-import {
-  BtnGhost,
-  BtnPrimary,
-  FlashValue,
-  IconDownload,
-  IconPrint,
-  Panel,
-} from "./ui";
 
 /* ============ full paper sheet (print target) ============ */
 export function VorSheet({ state, vor }: { state: ProjectState; vor: VorResult }) {

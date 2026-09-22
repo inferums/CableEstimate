@@ -19,7 +19,6 @@ import type {
   TrenchType,
   VorItem,
   VorRow,
-  VorSectionId,
 } from "./types";
 import { sectionTitle } from "./types";
 
@@ -501,7 +500,6 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
     /* У ГНБ нет траншеи: ширины и основания не существует, объёмы считаются в своей ветке */
     const dug = isDugType(seg.type) ? dugParams(state, seg.type) : null;
     const B = dug?.width ?? 0;
-    const m = CALC.slopeK;
 
     if (hAvg < CALC.minDepth) {
       warnings.push({ code: "depth-pue", text: `Глубина ${hAvg.toFixed(1)} м меньше минимальной по ПУЭ 2.3.84 (${c(CALC.minDepth)} м)`, severity: "warn" });

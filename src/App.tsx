@@ -10,7 +10,6 @@ import {
 import {
   BtnGhost,
   BtnPrimary,
-  FlashValue,
   IconBolt,
   IconDoc,
   IconDownload,
