@@ -38,7 +38,21 @@ import { DEFAULT_SOIL, DEFAULT_SURFACES, TRENCH_META, VOLTAGE_META } from "./dat
 import { buildVor, SOIL_GROUP_MAX, SOIL_GROUP_MIN, structureCount } from "./lib/calc";
 import { exportVorExcel } from "./lib/excel";
 import { downloadDxf } from "./lib/dxf-export";
-import { exportJsonFile, importJsonFile, loadFromLocal, saveToLocal } from "./lib/storage";
+import { exportJsonFile, importJsonFile } from "./lib/storage";
+import { openKv, type Kv } from "./lib/kv";
+import {
+  createProject,
+  deleteProject,
+  duplicateProject,
+  LEGACY_KEY,
+  listProjects,
+  loadProject,
+  openWorkspace,
+  saveProject,
+  setCurrentId as rememberCurrent,
+  type ProjectMeta,
+} from "./lib/projects";
+import { ProjectSwitcher, SaveBadge, type SaveState } from "./components/projects";
 import type {
   ParamsMap,
   ProjectState,
@@ -103,11 +117,8 @@ const NAV = [
 ];
 
 export default function App() {
-  /* Сохранённый проект читается один раз при запуске и приводится к текущему
-     формату; всё, что миграция подправила, показывается пользователю. */
-  const [restored] = useState(loadFromLocal);
-  const [state, setState] = useState<ProjectState>(() => restored?.state ?? defaultState());
-  const [notices, setNotices] = useState<string[]>(() => restored?.notes ?? []);
+  const [state, setState] = useState<ProjectState>(defaultState);
+  const [notices, setNotices] = useState<string[]>([]);
   const [modal, setModal] = useState<ModalState>(null);
   const [draft, setDraft] = useState<ParamsMap[TrenchType] | null>(null);
   const [activeNav, setActiveNav] = useState("sec-object");
@@ -119,31 +130,178 @@ export default function App() {
   const meta = VOLTAGE_META[state.voltage];
   const cablesPerSegment = state.chains * meta.cablesPerChain;
 
-  /* -------- автосохранение в localStorage -------- */
+  /* -------- объекты: реестр, открытие, сохранение -------- */
+  const kvRef = useRef<Kv | null>(null);
+  const [projects, setProjects] = useState<ProjectMeta[]>([]);
+  const [currentId, setCurrentId] = useState<string | null>(null);
+  const [save, setSave] = useState<SaveState>({ kind: "idle" });
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
+  /* Только что открытый объект не нужно тут же переписывать обратно:
+     иначе каждое открытие меняло бы дату правки и порядок в списке. */
+  const skipSave = useRef(true);
+
   useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const kv = await openKv();
+      kvRef.current = kv;
+      try {
+        const ws = await openWorkspace(kv, defaultState, localStorage.getItem(LEGACY_KEY));
+        if (!alive) return;
+        skipSave.current = true;
+        setProjects(ws.projects);
+        setCurrentId(ws.current.id);
+        setState(ws.state);
+        if (ws.notes.length > 0) setNotices(ws.notes);
+        setSave({ kind: "saved", at: Date.now() });
+      } catch (err) {
+        if (alive) setSave({ kind: "error", message: (err as Error).message });
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const kv = kvRef.current;
+    if (!kv || !currentId) return;
+    if (skipSave.current) {
+      skipSave.current = false;
+      return;
+    }
+    setSave({ kind: "saving" });
     clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => saveToLocal(state), 400);
+    saveTimer.current = setTimeout(() => {
+      saveProject(kv, currentId, state)
+        .then((m) => {
+          setProjects((list) => [m, ...list.filter((x) => x.id !== m.id)]);
+          setSave({ kind: "saved", at: Date.now() });
+        })
+        /* Отказ записи показываем: молчать об этом — значит потерять работу */
+        .catch((err: Error) => setSave({ kind: "error", message: err.message }));
+    }, 400);
     return () => clearTimeout(saveTimer.current);
-  }, [state]);
+  }, [state, currentId]);
+
+  /** Дописывает отложенное сохранение до переключения на другой объект */
+  const flushSave = async () => {
+    const kv = kvRef.current;
+    clearTimeout(saveTimer.current);
+    if (!kv || !currentId || skipSave.current) return;
+    try {
+      await saveProject(kv, currentId, state);
+    } catch (err) {
+      setSave({ kind: "error", message: (err as Error).message });
+    }
+  };
+
+  /** Открывает объект, не сохраняя текущий — для случаев, когда сохранять уже нечего */
+  const loadInto = async (id: string) => {
+    const kv = kvRef.current;
+    if (!kv) return;
+    const loaded = await loadProject(kv, id);
+    if (!loaded) {
+      setSave({ kind: "error", message: "Объект не найден в хранилище" });
+      return;
+    }
+    skipSave.current = true;
+    setState(loaded.state);
+    setNotices(loaded.notes);
+    setCurrentId(id);
+    await rememberCurrent(kv, id);
+    setProjects(await listProjects(kv));
+    setSave({ kind: "saved", at: Date.now() });
+  };
+
+  const openProject = async (id: string) => {
+    await flushSave();
+    await loadInto(id);
+  };
+
+  /** Новый объект со значениями по умолчанию */
+  const addProject = async (fresh: ProjectState = defaultState()) => {
+    const kv = kvRef.current;
+    if (!kv) return;
+    await flushSave();
+    try {
+      const m = await createProject(kv, fresh);
+      skipSave.current = true;
+      setState(fresh);
+      setNotices([]);
+      setCurrentId(m.id);
+      await rememberCurrent(kv, m.id);
+      setProjects(await listProjects(kv));
+      setSave({ kind: "saved", at: Date.now() });
+    } catch (err) {
+      setSave({ kind: "error", message: (err as Error).message });
+    }
+  };
+
+  const copyProject = async (id: string) => {
+    const kv = kvRef.current;
+    if (!kv) return;
+    await flushSave();
+    const m = await duplicateProject(kv, id);
+    if (m) await loadInto(m.id);
+  };
+
+  const removeProject = async (id: string) => {
+    const kv = kvRef.current;
+    if (!kv) return;
+    const m = projects.find((p) => p.id === id);
+    const acts = m?.acts ?? 0;
+    const warn = acts > 0 ? `\n\nВ объекте принятых актов: ${acts}. Они будут удалены вместе с объектом.` : "";
+    if (
+      !confirm(
+        `Удалить объект «${m?.name || "без названия"}»?${warn}\n\nВосстановить будет нельзя. ` +
+          `Если объект ещё нужен, сначала сохраните его копию кнопкой JSON.`,
+      )
+    )
+      return;
+
+    /* Текущий объект удаляем без досохранения: иначе он тут же вернулся бы */
+    if (id === currentId) {
+      clearTimeout(saveTimer.current);
+      skipSave.current = true;
+    }
+    await deleteProject(kv, id);
+    const list = await listProjects(kv);
+    setProjects(list);
+    if (id !== currentId) return;
+    if (list.length > 0) await loadInto(list[0].id);
+    else await addProject();
+  };
+
+  const exportProject = async (id: string) => {
+    const kv = kvRef.current;
+    if (id === currentId || !kv) {
+      exportJsonFile(state);
+      return;
+    }
+    const loaded = await loadProject(kv, id);
+    if (loaded) exportJsonFile(loaded.state);
+  };
 
   /* -------- импорт JSON-файла -------- */
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleImport = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  /* Без useCallback: обработчику нужны свежие текущий объект и состояние */
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     importJsonFile(file)
-      .then(({ state: loaded, notes }) => {
-        setState(loaded);
-        setNotices(notes);
-        saveToLocal(loaded);
+      .then(async ({ state: loaded, notes }) => {
+        /* Файл открывается отдельным объектом, а не затирает открытый:
+           иначе один неверный клик стирал бы вместе с трассой принятые акты. */
+        await addProject(loaded);
+        if (notes.length > 0) setNotices(notes);
       })
       .catch((err: Error) => alert(`Ошибка импорта: ${err.message}`));
     e.target.value = "";
-  }, []);
+  };
 
   /* -------- навигация + scrollspy -------- */
   const go = (id: string) => {
@@ -246,6 +404,18 @@ export default function App() {
                 ведомость объемов работ · кабельные линии
               </div>
             </div>
+            <div className="ml-2 pl-3 border-l border-line">
+              <ProjectSwitcher
+                projects={projects}
+                currentId={currentId}
+                storage={kvRef.current?.kind ?? null}
+                onOpen={(id) => void openProject(id)}
+                onCreate={() => void addProject()}
+                onDuplicate={(id) => void copyProject(id)}
+                onDelete={(id) => void removeProject(id)}
+                onExport={(id) => void exportProject(id)}
+              />
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <div className="hidden md:flex items-center gap-5 font-mono text-[11px] uppercase tracking-wider text-mut">
@@ -255,10 +425,7 @@ export default function App() {
               <span>
                 поз. <b className="text-accent">{vor.totals.rows}</b>
               </span>
-              <span className="flex items-center gap-1.5 text-ok">
-                <span className="w-1.5 h-1.5 rounded-full bg-ok pulse-dot" />
-                сохранено
-              </span>
+              <SaveBadge state={save} />
             </div>
             <div className="flex items-center gap-1.5 border-l border-line pl-3 ml-1">
               <button

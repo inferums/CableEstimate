@@ -1,7 +1,12 @@
 import { isSupportedVersion, migrateProject, SCHEMA_VERSION, type MigrationResult } from "./migrate";
 import type { ProjectState } from "./types";
 
-const STORAGE_KEY = "cableestimate:project";
+/*
+ * Файлы проекта.
+ *
+ * Объекты хранятся в браузере (см. lib/projects.ts), а .json — способ унести
+ * объект на другую машину или оставить копию перед опасной правкой.
+ */
 
 interface StoredPayload {
   version: number;
@@ -9,40 +14,9 @@ interface StoredPayload {
   state: ProjectState;
 }
 
-const payloadFor = (state: ProjectState): StoredPayload => ({
-  version: SCHEMA_VERSION,
-  savedAt: new Date().toISOString(),
-  state,
-});
-
-export function saveToLocal(state: ProjectState) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payloadFor(state)));
-  } catch {
-    // quota exceeded or private mode — silently ignore
-  }
-}
-
-/**
- * Читает проект из localStorage, приводя его к текущему формату.
- *
- * Проект более ранней версии не выбрасывается: он мигрируется, а всё, что
- * пришлось подправить, возвращается в notes, чтобы пользователь это увидел.
- */
-export function loadFromLocal(): MigrationResult | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const payload: StoredPayload = JSON.parse(raw);
-    if (!isSupportedVersion(payload.version) || !payload.state?.params) return null;
-    return migrateProject(payload.state, payload.version);
-  } catch {
-    return null;
-  }
-}
-
 export function exportJsonFile(state: ProjectState) {
-  const blob = new Blob([JSON.stringify(payloadFor(state), null, 2)], { type: "application/json" });
+  const payload: StoredPayload = { version: SCHEMA_VERSION, savedAt: new Date().toISOString(), state };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   const code = (state.projectCode || "КЛ").replace(/\s+/g, "_");
@@ -74,8 +48,4 @@ export function importJsonFile(file: File): Promise<MigrationResult> {
     reader.onerror = () => reject(new Error("Ошибка чтения файла"));
     reader.readAsText(file);
   });
-}
-
-export function clearLocal() {
-  localStorage.removeItem(STORAGE_KEY);
 }
