@@ -53,6 +53,7 @@ import {
   type ProjectMeta,
 } from "./lib/projects";
 import { ProjectSwitcher, SaveBadge, type SaveState } from "./components/projects";
+import { CloudPanel } from "./components/cloud";
 import type {
   ParamsMap,
   ProjectState,
@@ -103,6 +104,7 @@ type ModalState =
   | { kind: "type"; type: TrenchType; isNew: boolean }
   | { kind: "surfaces" }
   | { kind: "survey" }
+  | { kind: "cloud" }
   | null;
 
 const NAV = [
@@ -428,6 +430,13 @@ export default function App() {
               <SaveBadge state={save} />
             </div>
             <div className="flex items-center gap-1.5 border-l border-line pl-3 ml-1">
+              <button
+                onClick={() => setModal({ kind: "cloud" })}
+                className="btn text-[11px] font-semibold text-mut hover:text-accent px-2 py-1.5 rounded-md hover:bg-accent-soft/60 transition-colors"
+                title="Синхронизация объектов с облаком"
+              >
+                <IconUpload className="w-3.5 h-3.5 inline-block mr-1" />Облако
+              </button>
               <button
                 onClick={() => setModal({ kind: "survey" })}
                 className="btn text-[11px] font-semibold text-mut hover:text-accent px-2 py-1.5 rounded-md hover:bg-accent-soft/60 transition-colors"
@@ -892,6 +901,35 @@ export default function App() {
           onSave={(surfaces) => {
             setState((s) => ({ ...s, surfaces }));
             setModal(null);
+          }}
+          onClose={() => setModal(null)}
+        />
+      )}
+
+      {modal?.kind === "cloud" && (
+        <CloudPanel
+          kv={kvRef.current}
+          projects={projects}
+          currentId={currentId}
+          currentState={state}
+          loadLocal={async (id) => {
+            const kv = kvRef.current;
+            if (!kv) return null;
+            return (await loadProject(kv, id))?.state ?? null;
+          }}
+          onApply={async (id, incoming) => {
+            const kv = kvRef.current;
+            if (!kv) return;
+            await saveProject(kv, id, incoming);
+            /* Открытый объект заменяем на экране, иначе правка вернула бы старое */
+            if (id === currentId) {
+              skipSave.current = true;
+              setState(incoming);
+            }
+          }}
+          onRefresh={async () => {
+            const kv = kvRef.current;
+            if (kv) setProjects(await listProjects(kv));
           }}
           onClose={() => setModal(null)}
         />

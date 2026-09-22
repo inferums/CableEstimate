@@ -4,6 +4,12 @@ dist/
 build/
 *.log
 
+# переменные окружения: токен хранилища и пароль синхронизации
+.env
+.env.*
+!.env.example
+.vercel/
+
 # служебные файлы AutoCAD
 *.dwl
 *.dwl2

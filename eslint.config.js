@@ -29,4 +29,13 @@ export default tseslint.config(
     files: ["src/**/*.test.ts", "src/test/**", "*.config.{js,ts}"],
     languageOptions: { globals: globals.node },
   },
+  {
+    /* Серверные функции Vercel: node плюс веб-примитивы Request и Response */
+    files: ["api/**/*.ts"],
+    extends: [js.configs.recommended, ...tseslint.configs.recommended],
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: { ...globals.node, Response: "readonly", Request: "readonly" },
+    },
+  },
 );
