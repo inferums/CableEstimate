@@ -31,6 +31,7 @@ import { SurfacesModal } from "./components/surfaces";
 import { SurveyImportWizard } from "./components/survey-wizard";
 import { PlanView, ProfileView } from "./components/route-viz";
 import { ComparisonTable } from "./components/comparison";
+import { ProgressPanel } from "./components/progress";
 import { TrenchDiagram } from "./components/diagrams";
 import { DEFAULT_SOIL, DEFAULT_SURFACES, TRENCH_META, VOLTAGE_META } from "./data/catalogs";
 import { buildVor, SOIL_GROUP_MAX, SOIL_GROUP_MIN, structureCount } from "./lib/calc";
@@ -96,7 +97,8 @@ const NAV = [
   { id: "sec-segments", num: "04", label: "Участки трассы", Icon: IconRoute },
   { id: "sec-viz", num: "05", label: "Трасса на плане", Icon: IconRoute },
   { id: "sec-compare", num: "06", label: "Проект — факт", Icon: IconShield },
-  { id: "sec-vor", num: "07", label: "Ведомость", Icon: IconDoc },
+  { id: "sec-progress", num: "07", label: "Выполнение", Icon: IconShield },
+  { id: "sec-vor", num: "08", label: "Ведомость", Icon: IconDoc },
 ];
 
 export default function App() {
@@ -608,10 +610,26 @@ export default function App() {
               </Section>
             </div>
 
-            {/* ---------- 07 ведомость ---------- */}
-            <div id="sec-vor" className="scroll-mt-24">
+            {/* ---------- 07 выполнение ---------- */}
+            <div id="sec-progress" className="scroll-mt-24">
               <Section
                 num="07"
+                title="Выполнение"
+                sub="Закрытие объёмов по частям трассы и видам работ. Накопительная ведомость: проект, принято по актам, остаток."
+                className="print-hide"
+              >
+                <ProgressPanel
+                  state={state}
+                  vor={vor}
+                  onChange={(acts) => patch({ acts })}
+                />
+              </Section>
+            </div>
+
+            {/* ---------- 08 ведомость ---------- */}
+            <div id="sec-vor" className="scroll-mt-24">
+              <Section
+                num="08"
                 title="Ведомость (ВОР)"
                 sub="Итоговый документ — в Excel или на печать."
                 hideHeaderOnPrint

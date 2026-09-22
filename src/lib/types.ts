@@ -106,6 +106,49 @@ export interface SoilParams {
   wetShare: number;
 }
 
+/* ================= накопительный учёт выполнения ================= */
+
+/** Часть участка, закрываемая актом: сам участок и сколько его метров закрыто */
+export interface ActScope {
+  segmentId: string;
+  /** Закрываемая длина, м. Может быть меньше длины участка */
+  length: number;
+}
+
+/**
+ * Позиция акта. Объём заморожен: он не пересчитывается при правке проекта,
+ * иначе уже принятые работы потерялись бы при любом изменении трассы.
+ * Наименование, единица и раздел хранятся здесь же — позиция должна читаться,
+ * даже если из ведомости она исчезла.
+ */
+export interface ActItem {
+  /** Ключ позиции ведомости: раздел, подраздел, наименование, единица */
+  key: string;
+  section: VorSectionId;
+  subSection: string;
+  name: string;
+  unit: string;
+  /** Принятый объём */
+  qty: number;
+  /** Объём, посчитанный приложением в момент составления акта */
+  calcQty: number;
+}
+
+/** Акт закрытия объёмов: часть трассы и часть видов работ */
+export interface Act {
+  id: string;
+  number: string;
+  /** Дата в формате ISO (ГГГГ-ММ-ДД) */
+  date: string;
+  title: string;
+  scope: ActScope[];
+  /** Разделы ведомости, попавшие в акт */
+  sections: VorSectionId[];
+  /** Включены ли работы по линии целиком (концевые муфты) */
+  lineWorks: boolean;
+  items: ActItem[];
+}
+
 export interface ProjectState {
   projectName: string;
   projectCode: string;
@@ -116,6 +159,8 @@ export interface ProjectState {
   params: ParamsMap;
   segments: Segment[];
   surfaces: Surface[];
+  /** Акты закрытия объёмов; пусто, пока ничего не закрывали */
+  acts?: Act[];
   surveyMeta?: SurveyMeta;
   cableJournal?: CableSpec[];
 }

@@ -175,3 +175,69 @@ describe("выгрузка ведомости в Excel", () => {
     expect(name).not.toMatch(/\s/);
   });
 });
+
+/* ================= листы выполнения ================= */
+
+import { ALL_SECTIONS, actItems, newActId } from "./progress";
+import type { Act } from "./types";
+
+const withActs = () => {
+  const state = allTypes();
+  const seg = state.segments[0];
+  const draft = { scope: [{ segmentId: seg.id, length: 30 }], sections: ALL_SECTIONS, lineWorks: false };
+  const act: Act = {
+    id: newActId(), number: "1", date: "2026-02-01", title: "1-я строительная длина",
+    scope: draft.scope, sections: draft.sections, lineWorks: false,
+    items: actItems(state, draft),
+  };
+  return { ...state, acts: [act] };
+};
+
+describe("выгрузка выполнения", () => {
+  it("без актов листов выполнения нет", async () => {
+    const { wb } = await workbook();
+    for (const name of ["Накопительная", "Схема выполнения"]) {
+      expect(wb.getWorksheet(name), name).toBeUndefined();
+    }
+  });
+
+  it("с актами появляются накопительная, схема и лист акта", async () => {
+    const state = withActs();
+    const wb = await buildVorWorkbook(state, buildVor(state));
+    expect(wb.getWorksheet("Накопительная")).toBeDefined();
+    expect(wb.getWorksheet("Схема выполнения")).toBeDefined();
+    expect(wb.getWorksheet("Акт 1")).toBeDefined();
+  });
+
+  it("в накопительной есть колонка на каждый акт", async () => {
+    const state = withActs();
+    const wb = await buildVorWorkbook(state, buildVor(state));
+    const ws = wb.getWorksheet("Накопительная")!;
+    const head = ws.getRow(1);
+    const titles = [1, 2, 3, 4, 5, 6, 7, 8].map((c) => String(head.getCell(c).value ?? ""));
+    expect(titles[3]).toBe("По проекту");
+    expect(titles[4]).toContain("Акт № 1");
+    expect(titles[5]).toBe("Принято всего");
+    expect(titles[6]).toBe("Остаток");
+  });
+
+  it("лист акта содержит все его позиции", async () => {
+    const state = withActs();
+    const wb = await buildVorWorkbook(state, buildVor(state));
+    const ws = wb.getWorksheet("Акт 1")!;
+    let positions = 0;
+    ws.eachRow((row) => {
+      if (typeof row.getCell(1).value === "number" && row.getCell(3).value) positions++;
+    });
+    expect(positions).toBe(state.acts![0].items.length);
+    expect(positions).toBeGreaterThan(0);
+  });
+
+  it("имя листа акта не длиннее допустимого", async () => {
+    const state = withActs();
+    state.acts![0].number = "ВОР-2026/01 на прокладку КЛ 110 кВ, этап 1";
+    const wb = await buildVorWorkbook(state, buildVor(state));
+    const sheet = wb.worksheets.find((w) => w.name.startsWith("Акт "))!;
+    expect(sheet.name.length).toBeLessThanOrEqual(31);
+  });
+});

@@ -3,7 +3,8 @@
 import type ExcelJS from "exceljs";
 import { TRENCH_META, VOLTAGE_META } from "../data/catalogs";
 import { fmt, segLabel, type VorResult } from "./calc";
-import { type ProjectState } from "./types";
+import { actSummary, coverage, progressReport } from "./progress";
+import { sectionTitle, VOR_SECTIONS, type ProjectState } from "./types";
 
 /*
  * Ведомость собирается по форме 0086-ТКР.ВР: восемь граф, сквозная нумерация
@@ -294,6 +295,135 @@ function sheetWarnings(wb: ExcelJS.Workbook, vor: VorResult) {
   return ws;
 }
 
+/* ================= листы выполнения ================= */
+
+/**
+ * Накопительная ведомость: по каждой позиции — проект, принято по каждому
+ * акту, итого нарастающим и остаток. Позиции, закрытые актами, но исчезнувшие
+ * из проекта, попадают сюда же с пометкой — принятые объёмы не теряются.
+ */
+function sheetProgress(wb: ExcelJS.Workbook, state: ProjectState, vor: VorResult) {
+  const report = progressReport(state, vor.rows);
+  if (report.acts.length === 0) return null;
+
+  const ws = wb.addWorksheet("Накопительная", {
+    pageSetup: { paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+  });
+
+  const titles = [
+    "№ п.п.", "Наименование работ, ресурсов, затрат", "Ед. изм.", "По проекту",
+    ...report.acts.map((a) => `Акт № ${a.number}\n${a.date}`),
+    "Принято всего", "Остаток", "Примечание",
+  ];
+  const widths = [8, 56, 10, 14, ...report.acts.map(() => 14), 14, 14, 22];
+  const head = tableHeader(ws, titles, widths);
+  ws.views = [{ state: "frozen", ySplit: head.number }];
+
+  let currentSection = 0;
+  let n = 0;
+  for (const r of report.rows) {
+    if (r.section !== currentSection && !r.orphan) {
+      currentSection = r.section;
+      const band = ws.addRow([`Раздел ${r.section}. ${r.sectionTitle}`]);
+      ws.mergeCells(band.number, 1, band.number, titles.length);
+      band.getCell(1).font = { bold: true, size: 11 };
+      band.getCell(1).fill = FILL_SECTION;
+      borderRow(band, titles.length);
+    }
+
+    n++;
+    const note = r.orphan ? "нет в проекте" : r.over ? "перерасход" : r.remaining <= 0 ? "закрыто" : "";
+    const row = ws.addRow([
+      n, r.name, r.unit, r.plan || null,
+      ...r.byAct.map((q) => q || null),
+      r.done || null, r.remaining, note,
+    ]);
+    row.font = { size: 10 };
+    row.getCell(1).alignment = { horizontal: "center" };
+    row.getCell(2).alignment = { wrapText: true, vertical: "top" };
+    for (let c = 4; c < titles.length; c++) row.getCell(c).numFmt = "#,##0.00";
+    if (r.orphan) row.font = { size: 10, color: { argb: "FF9C6500" } };
+    if (r.over) row.getCell(titles.length - 2).font = { size: 10, bold: true, color: { argb: "FF9C0006" } };
+    borderRow(row, titles.length);
+  }
+
+  return ws;
+}
+
+/** Отдельный лист на каждый акт — перечень объёмов для КС-2 */
+function sheetsActs(wb: ExcelJS.Workbook, state: ProjectState) {
+  const acts = [...(state.acts ?? [])].sort((a, b) => a.date.localeCompare(b.date));
+  for (const act of acts) {
+    const s = actSummary(state, act);
+    /* Имя листа в Excel не длиннее 31 символа и без служебных знаков */
+    const name = `Акт ${act.number}`.replace(/[\\/*?:[\]]/g, "-").slice(0, 31);
+    const ws = wb.addWorksheet(name, {
+      pageSetup: { paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+    });
+    ws.columns = [{ width: 8 }, { width: 62 }, { width: 12 }, { width: 16 }, { width: 16 }];
+
+    metaRow(ws, "Объект", state.projectName || "—");
+    metaRow(ws, "Шифр проекта", state.projectCode || "—");
+    metaRow(ws, "Акт №", act.number);
+    metaRow(ws, "Дата", act.date);
+    if (act.title) metaRow(ws, "Примечание", act.title);
+    metaRow(ws, "Участки", s.segments.map((seg) => segLabel(seg)).join(", ") || "—");
+    metaRow(ws, "Закрыто трассы, м", s.length);
+    metaRow(ws, "Разделы", act.sections.map((id) => `${id}. ${sectionTitle(id)}`).join("; ") + (act.lineWorks ? "; работы по линии" : ""));
+    ws.addRow([]);
+
+    const titles = ["№ п.п.", "Наименование работ, ресурсов, затрат", "Ед. изм.", "Принято", "По расчёту"];
+    tableHeader(ws, titles, [8, 62, 12, 16, 16]);
+
+    let n = 0;
+    for (const item of act.items) {
+      n++;
+      const row = ws.addRow([n, item.name, item.unit, item.qty, item.calcQty]);
+      row.font = { size: 10 };
+      row.getCell(1).alignment = { horizontal: "center" };
+      row.getCell(2).alignment = { wrapText: true, vertical: "top" };
+      row.getCell(4).numFmt = "#,##0.00";
+      row.getCell(5).numFmt = "#,##0.00";
+      /* Объём, поправленный вручную, виден сразу */
+      if (Math.abs(item.qty - item.calcQty) > 1e-6) {
+        row.getCell(4).font = { size: 10, bold: true, color: { argb: "FF9C6500" } };
+      }
+      borderRow(row, titles.length);
+    }
+
+    ws.addRow([]);
+    const sign = ws.addRow(["Сдал: ______________", "", "", "Принял: ______________"]);
+    sign.font = { size: 10 };
+  }
+}
+
+/** Схема выполнения: сколько метров каждого участка закрыто по разделам */
+function sheetCoverage(wb: ExcelJS.Workbook, state: ProjectState) {
+  if ((state.acts ?? []).length === 0) return null;
+  const ws = wb.addWorksheet("Схема выполнения");
+  const cov = coverage(state);
+  const titles = ["Участок", "Тип", "Длина, м", ...VOR_SECTIONS.map((s) => `${s.id}. ${s.title}`), "Готовность"];
+  tableHeader(ws, titles, [14, 20, 12, 18, 18, 18, 18, 14]);
+
+  state.segments.forEach((seg, i) => {
+    const c = cov[i];
+    const L = c.length || 1;
+    const row = ws.addRow([
+      segLabel(seg),
+      TRENCH_META[seg.type].label,
+      c.length,
+      ...VOR_SECTIONS.map((s) => Math.min(c.closed[s.id], c.length)),
+      Math.min(1, c.maxClosed / L),
+    ]);
+    row.font = { size: 10 };
+    for (let col = 3; col < titles.length; col++) row.getCell(col).numFmt = "#,##0.00";
+    row.getCell(titles.length).numFmt = "0%";
+    borderRow(row, titles.length);
+  });
+
+  return ws;
+}
+
 /**
  * Собирает книгу целиком. Вынесено отдельно от выгрузки, чтобы форму можно было
  * проверять тестами, не обращаясь к браузеру.
@@ -307,6 +437,10 @@ export async function buildVorWorkbook(state: ProjectState, vor: VorResult): Pro
   sheetVor(wb, state, vor);
   sheetSegments(wb, state, vor);
   sheetInput(wb, state);
+  /* Выполнение: появляется только когда что-то закрыто */
+  sheetProgress(wb, state, vor);
+  sheetCoverage(wb, state);
+  sheetsActs(wb, state);
   sheetWarnings(wb, vor);
 
   return wb;

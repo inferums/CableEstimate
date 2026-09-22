@@ -126,6 +126,18 @@ export function migrateProject(input: ProjectState, fromVersion: number): Migrat
     open.plateMark = replacement.mark;
   }
 
+  /* --- акты закрытия объёмов ---
+     Объёмы в актах заморожены и здесь не пересчитываются: это принятые
+     работы. Выбрасываем только заведомо испорченные записи. */
+  if (state.acts !== undefined) {
+    const acts = Array.isArray(state.acts) ? state.acts : [];
+    const good = acts.filter((a) => a && typeof a === "object" && Array.isArray(a.items) && Array.isArray(a.scope));
+    if (good.length !== acts.length) {
+      notes.push(`Повреждённых актов закрытия: ${acts.length - good.length} — они не прочитаны.`);
+    }
+    state.acts = good;
+  }
+
   /* --- ссылки участков на покрытия --- */
   const surfaceIds = new Set(state.surfaces.map((s) => s.id));
   let repaired = 0;
