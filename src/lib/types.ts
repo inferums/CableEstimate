@@ -106,6 +106,8 @@ export interface SoilParams {
   wetShare: number;
 }
 
+import type { ProjectSmeta } from "./reconcile";
+
 /* ================= накопительный учёт выполнения ================= */
 
 /** Часть участка, закрываемая актом: сам участок и сколько его метров закрыто */
@@ -161,6 +163,8 @@ export interface ProjectState {
   surfaces: Surface[];
   /** Акты закрытия объёмов; пусто, пока ничего не закрывали */
   acts?: Act[];
+  /** Импортированная смета и связи её позиций с позициями ведомости */
+  smeta?: ProjectSmeta;
   surveyMeta?: SurveyMeta;
   cableJournal?: CableSpec[];
 }

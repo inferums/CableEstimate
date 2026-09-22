@@ -4,6 +4,7 @@ import type ExcelJS from "exceljs";
 import { TRENCH_META, VOLTAGE_META } from "../data/catalogs";
 import { fmt, segLabel, type VorResult } from "./calc";
 import { actSummary, coverage, progressReport } from "./progress";
+import { reconcile } from "./reconcile";
 import { sectionTitle, VOR_SECTIONS, type ProjectState } from "./types";
 
 /*
@@ -425,6 +426,86 @@ function sheetCoverage(wb: ExcelJS.Workbook, state: ProjectState) {
 }
 
 /**
+ * Сверка со сметой: позиция ведомости, связанная с ней позиция сметы,
+ * объём сметы в единицах ведомости, расхождение с проектом и остаток,
+ * который ещё можно закрыть по смете.
+ */
+function sheetReconcile(wb: ExcelJS.Workbook, state: ProjectState, vor: VorResult) {
+  if (!state.smeta) return null;
+  const rep = reconcile(state, vor.rows);
+
+  const ws = wb.addWorksheet("Сверка со сметой", {
+    pageSetup: { paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+  });
+  const titles = [
+    "№ п.п.", "Позиция ведомости", "Ед. изм.", "По проекту", "Принято",
+    "Смета", "Обоснование", "Позиция сметы", "Ед. сметы", "Объём сметы",
+    "Коэф.", "Объём сметы в ед. ведомости", "Проект − смета", "Остаток по смете", "Примечание",
+  ];
+  const head = tableHeader(ws, titles, [7, 46, 10, 12, 12, 14, 20, 46, 12, 12, 8, 16, 14, 14, 20]);
+  ws.views = [{ state: "frozen", ySplit: head.number }];
+
+  let n = 0;
+  for (const r of rep.rows) {
+    n++;
+    const link = state.smeta.links.find((l) => l.key === r.key);
+    const note = r.overSmeta
+      ? "принято больше, чем в смете"
+      : r.unitMismatch
+        ? "единицы сметы и ведомости не совпадают"
+        : r.smeta
+          ? ""
+          : "нет связи со сметой";
+
+    const row = ws.addRow([
+      n,
+      r.name,
+      r.unit,
+      r.plan || null,
+      r.done || null,
+      r.smeta ? `${r.smeta.sheet} № ${r.smeta.no}` : "",
+      r.smeta?.code ?? "",
+      r.smeta?.name ?? "",
+      r.smeta?.unit ?? "",
+      r.smeta?.qty ?? null,
+      r.smeta ? (link?.factor ?? 1) : null,
+      r.smetaQty,
+      r.deltaPlan,
+      r.remainingBySmeta,
+      note,
+    ]);
+    row.font = { size: 10 };
+    row.getCell(1).alignment = { horizontal: "center" };
+    row.getCell(2).alignment = { wrapText: true, vertical: "top" };
+    row.getCell(8).alignment = { wrapText: true, vertical: "top" };
+    for (const c of [4, 5, 10, 11, 12, 13, 14]) row.getCell(c).numFmt = "#,##0.00";
+    if (r.overSmeta) row.getCell(14).font = { size: 10, bold: true, color: { argb: "FF9C0006" } };
+    if (!r.smeta) row.font = { size: 10, color: { argb: "FF9C6500" } };
+    borderRow(row, titles.length);
+  }
+
+  /* Позиции сметы, не связанные ни с чем: их объёмы в ведомости не учтены */
+  if (rep.unusedSmeta.length > 0) {
+    ws.addRow([]);
+    const band = ws.addRow([`Позиции сметы без связи с ведомостью — ${rep.unusedSmeta.length}`]);
+    ws.mergeCells(band.number, 1, band.number, titles.length);
+    band.getCell(1).font = { bold: true, size: 11 };
+    band.getCell(1).fill = FILL_SECTION;
+    borderRow(band, titles.length);
+
+    for (const p of rep.unusedSmeta) {
+      const row = ws.addRow(["", "", "", "", "", `${p.sheet} № ${p.no}`, p.code, p.name, p.unit, p.qty]);
+      row.font = { size: 10, color: { argb: "FF9C6500" } };
+      row.getCell(8).alignment = { wrapText: true, vertical: "top" };
+      row.getCell(10).numFmt = "#,##0.00";
+      borderRow(row, titles.length);
+    }
+  }
+
+  return ws;
+}
+
+/**
  * Собирает книгу целиком. Вынесено отдельно от выгрузки, чтобы форму можно было
  * проверять тестами, не обращаясь к браузеру.
  */
@@ -441,6 +522,7 @@ export async function buildVorWorkbook(state: ProjectState, vor: VorResult): Pro
   sheetProgress(wb, state, vor);
   sheetCoverage(wb, state);
   sheetsActs(wb, state);
+  sheetReconcile(wb, state, vor);
   sheetWarnings(wb, vor);
 
   return wb;

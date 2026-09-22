@@ -32,6 +32,7 @@ import { SurveyImportWizard } from "./components/survey-wizard";
 import { PlanView, ProfileView } from "./components/route-viz";
 import { ComparisonTable } from "./components/comparison";
 import { ProgressPanel } from "./components/progress";
+import { SmetaPanel } from "./components/smeta";
 import { TrenchDiagram } from "./components/diagrams";
 import { DEFAULT_SOIL, DEFAULT_SURFACES, TRENCH_META, VOLTAGE_META } from "./data/catalogs";
 import { buildVor, SOIL_GROUP_MAX, SOIL_GROUP_MIN, structureCount } from "./lib/calc";
@@ -623,6 +624,16 @@ export default function App() {
                   vor={vor}
                   onChange={(acts) => patch({ acts })}
                 />
+                <div className="mt-6 pt-5 border-t border-line">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-mut">
+                    Сверка со сметой
+                  </p>
+                  <SmetaPanel
+                    state={state}
+                    vor={vor}
+                    onChange={(smeta) => patch({ smeta })}
+                  />
+                </div>
               </Section>
             </div>
 
