@@ -8,9 +8,11 @@ import {
   CloudConflict,
   cloudDelete,
   cloudList,
+  cloudPing,
   cloudPull,
   cloudPush,
   cloudRows,
+  type CloudPing,
   forgetSync,
   PASSWORD_KEY,
   readSync,
@@ -78,6 +80,20 @@ export function CloudPanel({
   const [syncs, setSyncs] = useState<Map<string, SyncRecord>>(new Map());
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [ping, setPing] = useState<CloudPing | null>(null);
+
+  const check = async () => {
+    setBusy("проверка");
+    setError(null);
+    setPing(null);
+    try {
+      setPing(await cloudPing(password));
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const readSyncs = useCallback(async () => {
     if (!kv) return;
@@ -229,8 +245,27 @@ export function CloudPanel({
         </div>
 
         {error && (
-          <div className="border border-danger/40 bg-danger-soft rounded-lg px-3 py-2 text-xs text-danger">
-            {error}
+          <div className="border border-danger/40 bg-danger-soft rounded-lg px-3 py-2 text-xs text-danger space-y-1.5">
+            <div>{error}</div>
+            <button
+              onClick={() => void check()}
+              disabled={busy !== null}
+              className="btn text-[11px] font-semibold underline decoration-dotted"
+            >
+              {busy === "проверка" ? "Проверка…" : "Проверить сервер"}
+            </button>
+          </div>
+        )}
+
+        {ping && (
+          <div className="border border-line rounded-lg px-3 py-2 text-[11px] font-mono text-mut space-y-0.5">
+            <div>Node {ping.node}</div>
+            <div className={ping.sdk === "ок" ? "" : "text-danger"}>SDK хранилища: {ping.sdk}</div>
+            {Object.entries(ping.env).map(([k, v]) => (
+              <div key={k} className={v ? "text-ok" : "text-warn"}>
+                {k}: {v ? "задан" : "нет"}
+              </div>
+            ))}
           </div>
         )}
 

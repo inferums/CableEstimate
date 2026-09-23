@@ -1,7 +1,7 @@
 import type { Kv } from "./kv";
 import type { ProjectMeta } from "./projects";
 import type { Act, ProjectState } from "./types";
-import type { RemoteMeta } from "./cloud-shared";
+import { encodeToken, type RemoteMeta } from "./cloud-shared";
 
 /*
  * Клиент синхронизации с облаком.
@@ -43,7 +43,7 @@ export class CloudConflict extends Error {
 async function call<T>(password: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(API, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${password}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${encodeToken(password)}` },
     body: JSON.stringify(body),
   });
   if (res.status === 409) {
@@ -52,10 +52,31 @@ async function call<T>(password: string, body: Record<string, unknown>): Promise
   }
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(data.error ?? `Облако ответило ${res.status}`);
+    if (data.error) throw new Error(data.error);
+    /*
+     * Ответ без объяснения — это упавшая или не собранная функция, а не
+     * отказ по делу. Подсказываем, где смотреть, вместо голого кода.
+     */
+    const hint =
+      res.status >= 500
+        ? "функция на сервере упала — посмотрите Runtime Logs в Vercel"
+        : res.status === 404
+          ? "функция /api/sync не развёрнута; при локальном npm run dev её и не бывает"
+          : "неожиданный ответ";
+    throw new Error(`Облако ответило ${res.status}: ${hint}`);
   }
   return (await res.json()) as T;
 }
+
+export interface CloudPing {
+  node: string;
+  /** «ок» либо текст ошибки загрузки SDK хранилища */
+  sdk: string;
+  env: Record<string, boolean>;
+}
+
+/** Что видит функция на сервере: версия Node, SDK хранилища, наличие переменных */
+export const cloudPing = (password: string) => call<CloudPing>(password, { action: "ping" });
 
 export const cloudList = (password: string) =>
   call<{ objects: RemoteMeta[] }>(password, { action: "list" }).then((r) => r.objects);

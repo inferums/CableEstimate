@@ -12,6 +12,20 @@ import type { Act, ProjectState } from "./types";
 
 export const PREFIX = "objects/";
 
+/**
+ * Пароль для заголовка Authorization.
+ *
+ * Заголовки HTTP — это байты латиницы: пароль с кириллицей браузер отказался
+ * бы отправить вовсе, а не просто не прошёл бы проверку. Поэтому обе стороны
+ * сравнивают пароль в base64 от его байтов в UTF-8.
+ */
+export function encodeToken(password: string): string {
+  const bytes = new TextEncoder().encode(password);
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary);
+}
+
 /** Идентификатор объекта попадает в путь файла — посторонние символы недопустимы */
 export const isValidId = (id: string) => /^[A-Za-z0-9_-]{1,64}$/.test(id);
 

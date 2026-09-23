@@ -4,6 +4,9 @@
   "description": "Расчёт ведомости объёмов работ высоковольтных кабельных линий",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",

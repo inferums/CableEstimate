@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { mergeActs, mergePulled, isValidId, safeActId, remoteMeta } from "./cloud-shared";
+import { encodeToken, mergeActs, mergePulled, isValidId, safeActId, remoteMeta } from "./cloud-shared";
 import { CloudConflict, cloudPull, cloudPush, cloudRows, rowStatus, type SyncRecord } from "./cloud";
 import { project } from "../test/fixtures";
 import type { Act, ProjectState } from "./types";
@@ -52,6 +52,20 @@ describe("слияние актов", () => {
   it("акты из отдельных файлов подхватываются, даже если в проекте их нет", () => {
     const merged = mergePulled(null, state({ acts: [] }), [act("из-файла")]);
     expect(merged.acts!.map((a) => a.id)).toEqual(["из-файла"]);
+  });
+});
+
+describe("пароль в заголовке", () => {
+  it("кириллический пароль превращается в допустимые для заголовка символы", () => {
+    const token = encodeToken("пароль-Ё");
+    expect(token).toMatch(/^[A-Za-z0-9+/=]+$/);
+    /* Заголовок принимает только байты latin1 — кириллица в нём выбросила бы ошибку */
+    expect(() => new Request("https://x/", { headers: { Authorization: `Bearer ${token}` } })).not.toThrow();
+  });
+
+  it("разные пароли дают разные значения, одинаковые — одинаковые", () => {
+    expect(encodeToken("один")).toBe(encodeToken("один"));
+    expect(encodeToken("один")).not.toBe(encodeToken("другой"));
   });
 });
 
@@ -129,7 +143,8 @@ describe("обмен с сервером", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/api/sync");
     expect(url).not.toContain("секрет");
-    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer секрет");
+    /* В заголовке пароль в виде, пригодном для заголовка, а не как есть */
+    expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${encodeToken("секрет")}`);
   });
 
   it("более свежая версия в облаке — это конфликт с данными о ней, а не молчаливая перезапись", async () => {
