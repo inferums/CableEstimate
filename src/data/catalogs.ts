@@ -125,6 +125,13 @@ export const VOLTAGE_META: Record<
      * Прокладка в железобетонных лотках на 35 кВ не применяется.
      */
     excludedTypes: TrenchType[];
+    /**
+     * Класс напряжения ещё не проработан: траншеи у него другие, и кабель
+     * укладывается не в лотках. Расчёт для таких классов выдаёт конструкции
+     * от 110–220 кВ, то есть не соответствует действительности, поэтому
+     * выбрать такой класс нельзя, а уже открытый проект помечается.
+     */
+    inDevelopment?: boolean;
   }
 > = {
   "0.4-10": {
@@ -134,6 +141,7 @@ export const VOLTAGE_META: Record<
     cableNote: "кабель трёхжильный, 1 кабель на цепь",
     structurePerChain: false,
     excludedTypes: [],
+    inDevelopment: true,
   },
   "35": {
     label: "35 кВ",
@@ -142,6 +150,7 @@ export const VOLTAGE_META: Record<
     cableNote: "кабель одножильный, 3 кабеля на цепь",
     structurePerChain: false,
     excludedTypes: ["lotok"],
+    inDevelopment: true,
   },
   "110-220": {
     label: "110 – 220 кВ",

@@ -73,9 +73,11 @@ const VOLT_BIG: Record<VoltageClass, string> = {
 
 function defaultState(): ProjectState {
   return {
-    projectName: "Реконструкция КЛ 10 кВ от ПС «Заречная»",
+    projectName: "Реконструкция КЛ 110 кВ от ПС «Заречная»",
     projectCode: "24-07-КЛ",
-    voltage: "0.4-10",
+    /* Классы 0,4–10 и 35 кВ ещё в разработке — новый объект начинается с
+       того класса, для которого расчёт верен */
+    voltage: "110-220",
     types: ["lotok", "open", "block", "gnb", "splice"],
     chains: 2,
     soil: { ...DEFAULT_SOIL },
@@ -594,36 +596,65 @@ export default function App() {
                   {(Object.keys(VOLTAGE_META) as VoltageClass[]).map((v, i) => {
                     const m = VOLTAGE_META[v];
                     const active = state.voltage === v;
+                    /* Класс в разработке выбрать нельзя, но если проект уже на
+                       нём — карточка остаётся отмеченной, чтобы было видно,
+                       что именно считается неверно */
+                    const locked = Boolean(m.inDevelopment) && !active;
                     return (
                       <Reveal key={v} delay={i * 60}>
                         <button
                           type="button"
+                          disabled={locked}
+                          title={locked ? "Класс напряжения в разработке" : undefined}
                           onClick={() => patch({ voltage: v })}
                           className={`btn w-full text-left border rounded-xl px-4 sm:px-5 py-4 sm:py-5 transition-colors ${
                             active
                               ? "border-accent bg-accent-soft shadow-[0_10px_28px_-14px_rgba(37,99,235,0.45)]"
-                              : "border-line bg-surface hover:border-accent/50 shadow-card"
+                              : locked
+                                ? "border-line border-dashed bg-well cursor-not-allowed"
+                                : "border-line bg-surface hover:border-accent/50 shadow-card"
                           }`}
                         >
                           <div className="flex items-baseline justify-between gap-2">
-                            <span className={`font-display text-2xl sm:text-3xl leading-none ${active ? "text-accent-deep" : "text-ink"}`}>
+                            <span
+                              className={`font-display text-2xl sm:text-3xl leading-none ${
+                                active ? "text-accent-deep" : locked ? "text-mut2" : "text-ink"
+                              }`}
+                            >
                               {VOLT_BIG[v]}
                               <span className="text-sm align-top ml-1 text-mut">кВ</span>
                             </span>
-                            <span
-                              className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${
-                                active ? "border-accent bg-accent" : "border-line2"
-                              }`}
-                            >
-                              {active && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
-                            </span>
+                            {m.inDevelopment ? (
+                              <span className="text-[9px] font-semibold uppercase tracking-wider text-warn border border-warn/50 rounded px-1.5 py-0.5 whitespace-nowrap">
+                                в разработке
+                              </span>
+                            ) : (
+                              <span
+                                className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${
+                                  active ? "border-accent bg-accent" : "border-line2"
+                                }`}
+                              >
+                                {active && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                              </span>
+                            )}
                           </div>
-                          <div className="mt-2.5 text-[11px] leading-snug text-mut">{m.cableNote}</div>
+                          <div className={`mt-2.5 text-[11px] leading-snug ${locked ? "text-mut2" : "text-mut"}`}>
+                            {m.inDevelopment ? "траншеи другие, кабель не в лотках — расчёт пока не готов" : m.cableNote}
+                          </div>
                         </button>
                       </Reveal>
                     );
                   })}
                 </div>
+
+                {meta.inDevelopment && (
+                  <div className="mt-3 border border-warn/50 bg-warn-soft rounded-lg px-3.5 py-2.5 text-xs text-body leading-relaxed">
+                    <b>Класс {meta.short} в разработке.</b> Траншеи на нём другие, и кабель
+                    укладывается не в лотках, а приложение считает конструкции как для 110–220 кВ.
+                    Ведомость по такому проекту в дело не годится — она останется здесь как
+                    черновик, пока класс не проработан.
+                  </div>
+                )}
 
                 <Reveal delay={120}>
                   <div className="mt-3 grid sm:grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,0.8fr)] gap-3">
