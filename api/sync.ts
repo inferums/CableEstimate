@@ -10,7 +10,7 @@ import {
   remoteMeta,
   safeActId,
   type RemoteMeta,
-} from "../src/lib/cloud-shared";
+} from "./_shared";
 import type { Act, ProjectState } from "../src/lib/types";
 
 /*
