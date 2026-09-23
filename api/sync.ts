@@ -1,17 +1,53 @@
 import { timingSafeEqual } from "node:crypto";
-import {
-  actPath,
-  actsPrefix,
-  encodeToken,
-  isValidId,
-  metaPath,
-  PREFIX,
-  projectPath,
-  remoteMeta,
-  safeActId,
-  type RemoteMeta,
-} from "./_shared";
-import type { Act, ProjectState } from "../src/lib/types";
+import type { Act, ProjectState, RemoteMeta } from "../src/lib/types";
+
+/*
+ * Ни одного импорта значений за пределами этого файла — намеренно.
+ *
+ * Функции на Vercel не собираются в один файл: каждый .ts компилируется сам
+ * по себе и рядом не оказывается ни кода из src, ни соседних модулей из api.
+ * Импорт разваливал функцию на старте: ERR_MODULE_NOT_FOUND и пустой 500.
+ * Импорты типов исчезают при компиляции и потому безопасны.
+ *
+ * Зеркало этих правил для браузера — src/lib/cloud-shared.ts; что обе копии
+ * говорят одно и то же, проверяет src/lib/api-contract.test.ts.
+ */
+
+const PREFIX = "objects/";
+
+const metaPath = (id: string) => `${PREFIX}${id}/meta.json`;
+const projectPath = (id: string) => `${PREFIX}${id}/project.json`;
+const actsPrefix = (id: string) => `${PREFIX}${id}/acts/`;
+const actPath = (id: string, actId: string) => `${actsPrefix(id)}${actId}.json`;
+
+/** Идентификаторы попадают в путь файла — посторонние символы недопустимы */
+const isValidId = (id: string) => /^[A-Za-z0-9_-]{1,64}$/.test(id);
+const safeActId = (actId: string) => /^[A-Za-z0-9_-]{1,64}$/.test(actId);
+
+/** Пароль в виде, пригодном для заголовка: base64 от байтов UTF-8 */
+function encodeToken(password: string): string {
+  const bytes = new TextEncoder().encode(password);
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary);
+}
+
+function remoteMeta(id: string, state: ProjectState, device: string, size: number): RemoteMeta {
+  return {
+    id,
+    name: state.projectName,
+    code: state.projectCode,
+    updatedAt: new Date().toISOString(),
+    device,
+    segments: state.segments.length,
+    acts: state.acts?.length ?? 0,
+    hasSmeta: Boolean(state.smeta),
+    size,
+  };
+}
+
+/* Экспортируются только для проверки совпадения с браузерной копией */
+export const __internals = { PREFIX, metaPath, projectPath, actsPrefix, actPath, isValidId, safeActId, encodeToken, remoteMeta };
 
 /*
  * Синхронизация объектов с приватным хранилищем Vercel Blob.

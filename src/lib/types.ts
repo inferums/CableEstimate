@@ -151,6 +151,27 @@ export interface Act {
   items: ActItem[];
 }
 
+/**
+ * Сведения об объекте в облаке — то, что показывается в списке синхронизации.
+ *
+ * Описание лежит здесь, а не рядом с кодом облака, потому что серверная
+ * функция не может импортировать значения из src: импорт типа при компиляции
+ * исчезает, а импорт значения развалил бы функцию.
+ */
+export interface RemoteMeta {
+  id: string;
+  name: string;
+  code: string;
+  /** Когда объект записан в облако */
+  updatedAt: string;
+  /** С какой машины записан — чтобы понимать, чья версия свежее */
+  device: string;
+  segments: number;
+  acts: number;
+  hasSmeta: boolean;
+  size: number;
+}
+
 export interface ProjectState {
   projectName: string;
   projectCode: string;
