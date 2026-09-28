@@ -57,8 +57,6 @@ export interface LotokParams {
   zptCount: number;
   /** Кабелей ВОЛС на линию, шт */
   volsCount: number;
-  /** Шаг электронных маркеров, м */
-  markerStep: number;
   /** Шаг хомутов крепления, м */
   clampStep: number;
 }

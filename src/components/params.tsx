@@ -342,7 +342,6 @@ export function TrenchTypeForm({
             </Field>
             <NumField label="Труб ЗПТ на цепь" value={v.zptCount} onChange={(n) => onChange({ ...v, zptCount: n })} suffix="шт" />
             <NumField label="Кабелей ВОЛС" value={v.volsCount} onChange={(n) => onChange({ ...v, volsCount: n })} suffix="шт" />
-            <NumField label="Шаг электронных маркеров" value={v.markerStep} onChange={(n) => onChange({ ...v, markerStep: n })} suffix="м" />
             <NumField label="Шаг хомутов" value={v.clampStep} onChange={(n) => onChange({ ...v, clampStep: n })} suffix="м" />
           </div>
         </div>

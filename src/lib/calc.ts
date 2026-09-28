@@ -11,6 +11,7 @@ import {
   isTypeAllowed,
 } from "../data/catalogs";
 import { lotokGeometry } from "./section-lotok";
+import { markerPoints } from "./route-geometry";
 import { lotokSection } from "./lotok-items";
 import type {
   PipeEntry,
@@ -468,16 +469,27 @@ function lineItems(state: ProjectState): SubSection[] {
   /* Концевые муфты ставятся на двух концах линии, а не на каждом участке */
   const ends = nCables * 2;
   const strip = ends * CALC.cableStripLength;
-  return [
-    {
-      section: 3,
-      title: LINE_SUBSECTION,
-      items: [
-        { name: `Монтаж концевых муфт (кабель ${v.label})`, unit: "компл", qty: ends, formula: `${nCables}·2 = ${ends}` },
-        { name: `Запас кабеля на разделку в концевых муфтах`, unit: "м", qty: round2(strip), formula: `${ends}·${c(CALC.cableStripLength)} = ${f(strip)}` },
-      ],
-    },
+
+  const items: VorItem[] = [
+    { name: `Монтаж концевых муфт (кабель ${v.label})`, unit: "компл", qty: ends, formula: `${nCables}·2 = ${ends}` },
+    { name: `Запас кабеля на разделку в концевых муфтах`, unit: "м", qty: round2(strip), formula: `${ends}·${c(CALC.cableStripLength)} = ${f(strip)}` },
   ];
+
+  /* Электронные маркеры ставятся в точках трассы, а не через равные
+     промежутки: углы поворота, входы и выходы ГНБ, муфтовые поля. Это
+     свойство линии, поэтому позиция одна на всю линию, а не на участок. */
+  const mp = markerPoints(state.segments);
+  if (mp.total > 0) {
+    items.push({
+      name: `Электронный маркер полноразмерный`,
+      unit: "шт",
+      qty: mp.total,
+      formula: `углы ${mp.turns} + ГНБ ${mp.gnb} + муфтовые поля ${mp.splices} = ${mp.total}`,
+      symbols: "n_уг + n_гнб + n_муф",
+    });
+  }
+
+  return [{ section: 3, title: LINE_SUBSECTION, items }];
 }
 
 /* ================= основной расчёт сегмента ================= */

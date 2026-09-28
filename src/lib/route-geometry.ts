@@ -147,3 +147,52 @@ export function niceLength(target: number): number {
   const m = target / pow;
   return (m >= 5 ? 5 : m >= 2 ? 2 : 1) * pow;
 }
+
+/* ================= точки установки электронных маркеров ================= */
+
+/** Излом трассы, начиная с которого узел считается углом поворота, градусы */
+export const MARKER_TURN_ANGLE = 5;
+
+export interface MarkerPoints {
+  /** Углы поворота трассы */
+  turns: number;
+  /** Входы и выходы переходов ГНБ — по два на переход */
+  gnb: number;
+  /** Муфтовые поля */
+  splices: number;
+  total: number;
+  /**
+   * Углы посчитаны по координатам съёмки. Без них трасса рисуется условной
+   * прямой, где поворотов нет вовсе, и число углов пришлось бы выдумывать.
+   */
+  surveyed: boolean;
+}
+
+/**
+ * Где ставятся электронные маркеры: на углах поворота, на входах и выходах
+ * ГНБ и на муфтовых полях. Это свойство трассы, а не сечения траншеи,
+ * поэтому считается один раз на линию, а не по участкам.
+ */
+export function markerPoints(segments: Segment[]): MarkerPoints {
+  const plan = planGeometry(segments);
+  const gnb = segments.filter((s) => s.type === "gnb").length * 2;
+  const splices = segments.filter((s) => s.type === "splice").length;
+
+  let turns = 0;
+  if (plan.surveyed) {
+    const limit = (MARKER_TURN_ANGLE * Math.PI) / 180;
+    for (let i = 1; i < plan.lines.length; i++) {
+      const prev = plan.lines[i - 1];
+      const cur = plan.lines[i];
+      /* Разрыв трассы — это не поворот, а пропуск: угол там не определён */
+      if (dist(prev.b, cur.a) > PLAN_BREAK_TOLERANCE) continue;
+      const a1 = Math.atan2(prev.b.n - prev.a.n, prev.b.e - prev.a.e);
+      const a2 = Math.atan2(cur.b.n - cur.a.n, cur.b.e - cur.a.e);
+      let d = Math.abs(a2 - a1);
+      if (d > Math.PI) d = 2 * Math.PI - d;
+      if (d >= limit) turns++;
+    }
+  }
+
+  return { turns, gnb, splices, total: turns + gnb + splices, surveyed: plan.surveyed };
+}

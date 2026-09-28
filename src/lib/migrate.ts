@@ -181,7 +181,6 @@ function migrateLotokToType1(lotok: LotokParams): string | null {
   set("h5", num("pgsAbove") ?? LOTOK_TYPE1.h5);
   set("zptCount", LOTOK_TYPE1.zptCount);
   set("volsCount", LOTOK_TYPE1.volsCount);
-  set("markerStep", LOTOK_TYPE1.markerStep);
   set("clampStep", LOTOK_TYPE1.clampStep);
   if (lotok.backfillType !== "sand" && lotok.backfillType !== "soil") lotok.backfillType = LOTOK_TYPE1.backfillType;
   if (lotok.beddingType !== "sand" && lotok.beddingType !== "pgs") lotok.beddingType = LOTOK_TYPE1.beddingType;

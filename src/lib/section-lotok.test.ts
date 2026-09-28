@@ -33,7 +33,6 @@ const TYPE1: LotokParams = {
   backfillType: "soil",
   zptCount: 2,
   volsCount: 1,
-  markerStep: 25,
   clampStep: 1,
 };
 

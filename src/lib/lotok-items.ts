@@ -167,9 +167,6 @@ export function lotokCableItems(state: ProjectState, seg: Segment, g: LotokGeome
     );
   }
 
-  if (p.markerStep > 0) {
-    items.push(countItem(`Электронный маркер полноразмерный`, div(len, v("шаг_м", p.markerStep)), 1));
-  }
   if (p.clampStep > 0) {
     items.push(countItem(`Хомут крепления`, div(len, v("шаг_х", p.clampStep)), rows));
   }
