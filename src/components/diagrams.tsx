@@ -1,11 +1,14 @@
 import { useId } from "react";
-import { CALC, PLATES, PZK, STRUCTURE_GAP, TRAYS, trayInnerH, trayInnerW } from "../data/catalogs";
+import { CALC, PLATES, PZK, TRAYS } from "../data/catalogs";
 import type { ParamsMap, Surface, TrenchType } from "../lib/types";
+import { lotokGeometry, widthAt } from "../lib/section-lotok";
 
 /* инженерные разрезы по типам прокладки + разрезы покрытий */
 
 const INK = "#3F3F46";
 const MUT = "#71717A";
+/* Сигнальная лента — единственная цветная деталь разреза */
+const WARN = "#D97706";
 const ACC = "#2563EB";
 
 const clamp = (n: number, a: number, b: number) => Math.min(b, Math.max(a, n));
@@ -236,224 +239,185 @@ function BlockDiagram({ p, structures }: { p: ParamsMap["block"]; structures: nu
 }
 
 /* =========================== лотки (по «Разрез в лотке.svg» — геометрия CAD) =========================== */
-function LotokDiagram({ p, cables, structures }: { p: ParamsMap["lotok"]; cables: number; structures: number }) {
-  const tray = TRAYS.find((t) => t.mark === p.trayMark) ?? TRAYS[0];
-  const plate = PLATES.find((t) => t.mark === p.plateMark) ?? PLATES[0];
-  /* Число лотков в ряду: на 110–220 кВ по лотку на цепь */
-  const n = Math.max(1, Math.min(structures, 6));
+/* ===================== в лотке: разрез «Тип I» ======================= */
+
+/**
+ * Разрез рисуется по той же геометрии, по которой считаются объёмы, и
+ * подписывается теми же обозначениями. Масштаб условный — чертёж объясняет,
+ * что откуда меряется, а не заменяет собой рабочий чертёж.
+ */
+function LotokDiagram({
+  p,
+  cables,
+  structures,
+  depth,
+}: {
+  p: ParamsMap["lotok"];
+  cables: number;
+  structures: number;
+  depth?: number;
+}) {
+  const sand = useUid("sand");
+  const gravel = useUid("gravel");
+  const conc = useUid("conc");
+  const soil = useUid("soil");
+
+  const n = Math.max(1, Math.min(structures, 4));
   const cablesPerTray = Math.max(1, Math.round(cables / n));
 
-  const wallT = CALC.trayWall;
-  const botT  = CALC.trayBottom;
-  const plH   = plate.thickness;
-  const iW    = trayInnerW(tray);
-  const iH    = trayInnerH(tray);
-  const lW    = tray.width;
+  /* Без заданной глубины показываем минимальную по чертежу: над лентой 780 мм */
+  const tray = TRAYS.find((t) => t.mark === p.trayMark) ?? TRAYS[0];
+  const plate = PLATES.find((t) => t.mark === p.plateMark) ?? PLATES[0];
+  const stack = p.h1 + tray.height + p.h3 + plate.thickness + p.h5;
+  const Htr = depth && depth > 0 ? depth * 1000 : stack + 780;
+  const g = lotokGeometry(p, Htr / 1000, n, 0);
+  const lv = g.levels;
 
-  const hPgsInside = p.pgsInside;
-  const cavityH = iH - hPgsInside;
-  const lH = botT + hPgsInside + cavityH;
+  /* Подгонка под поле чертежа: высота важнее ширины, её и держим */
+  const W = 340;
+  const H = 250;
+  const padTop = 16;
+  const padBottom = 30;
+  const s = Math.min((H - padTop - padBottom) / Htr, (W - 150) / Math.max(g.B1, g.B2));
+  const cx = 150;
+  /* Экранная ось вниз, отметки разреза — вверх от дна */
+  const Y = (mm: number) => padTop + (Htr - mm) * s;
+  const half = (w: number) => (w * s) / 2;
 
-  /* Траншея должна вместить весь ряд лотков с зазорами */
-  const rowW = n * lW + (n - 1) * STRUCTURE_GAP;
-  const B = Math.max(p.width * 1000, rowW + 200);
+  const xL = (y: number) => cx - half(widthAt(g, y));
+  const xR = (y: number) => cx + half(widthAt(g, y));
 
-  const hPgsBot   = p.bedding * 1000;
-  const hPgsTop   = p.pgsTop;
-  const hPgsAbove = p.pgsAbove;
-  const hTopFill  = p.topFill;
-  const hTapeY    = 50;
-  const hSoil     = 100;
-  const H         = hTopFill + hSoil + hTapeY + hPgsAbove + plH + hPgsTop + lH + hPgsBot;
+  const shield = p.bShield * s;
+  const trayW = tray.width * s;
+  const rowW = trayW * n;
+  const rowLeft = cx - half(g.B1) + p.b3 * s;
+  const trayCenters = Array.from({ length: n }, (_, k) => rowLeft + trayW / 2 + k * trayW);
 
-  const yMM = {
-    surf:     0,
-    topFill:  hTopFill,
-    tape:     hTopFill + hSoil,
-    pgsAbove: hTopFill + hSoil + hTapeY,
-    plateTop: hTopFill + hSoil + hTapeY + hPgsAbove,
-    plateBot: hTopFill + hSoil + hTapeY + hPgsAbove + plH,
-    trayTop:  hTopFill + hSoil + hTapeY + hPgsAbove + plH + hPgsTop,
-    trayBot:  hTopFill + hSoil + hTapeY + hPgsAbove + plH + hPgsTop + lH,
-    bottom:   H,
+  const wall = CALC.trayWall * s;
+  const bottomT = CALC.trayBottom * s;
+
+  /* Кабели треугольником на подсыпке внутри лотка */
+  const cableD = Math.max(3, 100 * s);
+  const cableRow = (cxTray: number) => {
+    const yBase = Y(lv.trayBottom + CALC.trayBottom + p.h2) - cableD / 2;
+    const pts: { x: number; y: number }[] = [];
+    const cols = Math.min(cablesPerTray, 3);
+    for (let i = 0; i < cols; i++) {
+      pts.push({ x: cxTray - ((cols - 1) * cableD) / 2 + i * cableD, y: yBase });
+    }
+    if (cablesPerTray > cols) pts.push({ x: cxTray, y: yBase - cableD });
+    return pts;
   };
 
-  const s = 0.18;
-  const cx = 300;
-  const Y = (mm: number) => mm * s + 30;
-  const dimX = 22;
-
-  const Bpx = B * s;
-  const xTL = cx - Bpx / 2;
-  const xTR = cx + Bpx / 2;
-  const wPx = wallT * s;
-  const bPx = botT * s;
-
-  /* Центры лотков в ряду; при одной конструкции это просто центр траншеи */
-  const trayCenters = Array.from(
-    { length: n },
-    (_, k) => cx - (rowW * s) / 2 + (lW * s) / 2 + k * (lW + STRUCTURE_GAP) * s,
+  const layer = (y1: number, y2: number, fill: string, opacity = 1) => (
+    <path
+      d={`M${xL(y1)} ${Y(y1)}L${xR(y1)} ${Y(y1)}L${xR(y2)} ${Y(y2)}L${xL(y2)} ${Y(y2)}Z`}
+      fill={fill}
+      opacity={opacity}
+    />
   );
-  const halfL = (lW * s) / 2;
-  const halfI = (iW * s) / 2;
-  const cavityW = iW * s;
-  const rowLeft = trayCenters[0] - halfL;
-  const rowRight = trayCenters[n - 1] + halfL;
 
-  const yG = Y(0);
-  const yEnd = Y(H);
-
-  const soilTrId   = useUid("st");
-  const concId     = useUid("c");
-  const pgsId      = useUid("p");
-
-  const showCables = Math.min(cablesPerTray, 6);
-  const cableR = Math.max(2.5, Math.min(8, cavityW / (showCables * 3)));
-
-  const grassTicks: React.ReactNode[] = [];
-  for (let x = dimX + 4; x < xTL - 2; x += 14) {
-    grassTicks.push(<line key={`gl${x}`} x1={x} y1={yG + 1} x2={x - 5} y2={yG + 9} stroke="#999" strokeWidth="0.8" />);
-    grassTicks.push(<line key={`gr${x}`} x1={xTR + 4 + (x - dimX)} y1={yG + 1} x2={xTR + (x - dimX) - 1} y2={yG + 9} stroke="#999" strokeWidth="0.8" />);
-  }
+  const dimRight = cx + half(Math.max(g.B1, g.B2)) + 14;
 
   return (
-    <svg viewBox={`0 0 600 ${Math.round(yEnd + 36)}`} className="w-full h-auto select-none" style={{ maxHeight: 520 }}>
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto">
+      <Defs sand={sand} gravel={gravel} conc={conc} />
       <defs>
-        {/* Боковой грунт — однотонный светло-серый */}
-        {/* Грунт в траншее — сиенит (звёздочки) ГОСТ 21.302-2013 */}
-        <pattern id={soilTrId} width="18" height="18" patternUnits="userSpaceOnUse">
-          <path d="M9 5 L9 13 M5 9 L13 9 M6.5 6.5 L11.5 11.5 M11.5 6.5 L6.5 11.5" stroke="#999" strokeWidth="0.5" />
-        </pattern>
-        <pattern id={concId} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-          <line x1="0" y1="0" x2="0" y2="6" stroke="#555" strokeWidth="0.9" />
-        </pattern>
-        <pattern id={pgsId} width="10" height="10" patternUnits="userSpaceOnUse">
-          <circle cx="3" cy="3" r="1.5" fill="none" stroke="#777" strokeWidth="0.7" />
-          <circle cx="7.5" cy="7" r="1.2" fill="none" stroke="#777" strokeWidth="0.7" />
+        <pattern id={soil} width="6" height="6" patternUnits="userSpaceOnUse">
+          <rect width="6" height="6" fill="#FFFFFF" />
+          <path d="M0 6L6 0" stroke={MUT} strokeWidth="0.4" />
         </pattern>
       </defs>
 
-      {/* Боковой грунт — однотонный #E8E8E8 */}
-      <rect x={0} y={yG} width={xTL} height={yEnd - yG} fill="#E8E8E8" />
-      <rect x={xTR} y={yG} width={600 - xTR} height={yEnd - yG} fill="#E8E8E8" />
+      {/* слои снизу вверх */}
+      {layer(lv.bottom, lv.trayBottom, `url(#${gravel})`)}
+      {layer(lv.trayBottom, lv.plateTop, `url(#${gravel})`, 0.55)}
+      {layer(lv.plateTop, lv.surface, `url(#${soil})`)}
 
-      {/* Поверхность */}
-      <line x1={0} y1={yG} x2={xTL} y2={yG} stroke="#333" strokeWidth="1.5" />
-      <line x1={xTR} y1={yG} x2={600} y2={yG} stroke="#333" strokeWidth="1.5" />
-      {grassTicks}
+      {/* контур траншеи и щиты крепления */}
+      <path
+        d={`M${xL(0)} ${Y(0)}L${xR(0)} ${Y(0)}L${xR(Htr)} ${Y(Htr)}M${xL(Htr)} ${Y(Htr)}L${xL(0)} ${Y(0)}`}
+        fill="none"
+        stroke={INK}
+        strokeWidth="1.2"
+      />
+      <rect x={xL(0)} y={Y(Htr)} width={Math.max(1, shield)} height={Htr * s} fill={INK} opacity="0.25" />
+      <rect x={xR(0) - Math.max(1, shield)} y={Y(Htr)} width={Math.max(1, shield)} height={Htr * s} fill={INK} opacity="0.25" />
 
-      {/* Стенки траншеи */}
-      <line x1={xTL} y1={yG} x2={xTL} y2={yEnd} stroke="#333" strokeWidth="1" />
-      <line x1={xTR} y1={yG} x2={xTR} y2={yEnd} stroke="#333" strokeWidth="1" />
+      {/* лотки с кабелями */}
+      {trayCenters.map((c, k) => (
+        <g key={k}>
+          <path
+            d={
+              `M${c - trayW / 2} ${Y(lv.trayTop)}L${c - trayW / 2} ${Y(lv.trayBottom)}` +
+              `L${c + trayW / 2} ${Y(lv.trayBottom)}L${c + trayW / 2} ${Y(lv.trayTop)}` +
+              `L${c + trayW / 2 - wall} ${Y(lv.trayTop)}L${c + trayW / 2 - wall} ${Y(lv.trayBottom) - bottomT}` +
+              `L${c - trayW / 2 + wall} ${Y(lv.trayBottom) - bottomT}L${c - trayW / 2 + wall} ${Y(lv.trayTop)}Z`
+            }
+            fill={`url(#${conc})`}
+            stroke={INK}
+            strokeWidth="0.8"
+          />
+          {/* подсыпка под кабель внутри лотка */}
+          <rect
+            x={c - trayW / 2 + wall}
+            y={Y(lv.trayBottom + CALC.trayBottom + p.h2)}
+            width={trayW - 2 * wall}
+            height={Math.max(1, p.h2 * s)}
+            fill={`url(#${gravel})`}
+          />
+          {cableRow(c).map((pt, i) => (
+            <circle key={i} cx={pt.x} cy={pt.y} r={cableD / 2} fill="#FFFFFF" stroke={INK} strokeWidth="0.7" />
+          ))}
+          {/* плита перекрытия */}
+          <rect
+            x={c - (plate.width * s) / 2}
+            y={Y(lv.plateTop)}
+            width={plate.width * s}
+            height={Math.max(1.5, plate.thickness * s)}
+            fill={`url(#${conc})`}
+            stroke={INK}
+            strokeWidth="0.8"
+          />
+        </g>
+      ))}
 
-      {/* Грунт в траншее — сиенит (звёздочки) */}
-      <rect x={xTL} y={yG} width={Bpx} height={Y(yMM.tape) - yG} fill={`url(#${soilTrId})`} />
-      <line x1={xTL} y1={Y(yMM.tape)} x2={xTR} y2={Y(yMM.tape)} stroke="#999" strokeWidth="0.6" />
+      {/* труба ЗПТ слева от плиты */}
+      <circle
+        cx={rowLeft - p.b5 * s - Math.max(2, 25 * s)}
+        cy={Y(lv.plateBottom)}
+        r={Math.max(2, 25 * s)}
+        fill="#FFFFFF"
+        stroke={INK}
+        strokeWidth="0.7"
+      />
 
-      {/* Сигнальная лента: 3 отрезка на ОДНОЙ отметке (250+450+250 по X) с зазорами */}
-      {(() => {
-        const tapeY = Y(yMM.tape);
-        const gap = 3;
-        const totalW = p.tapeWidth * s;
-        const edgeW = totalW * (250 / 950);
-        const midW  = totalW * (450 / 950);
-        const startX = cx - totalW / 2;
-        return (
-          <>
-            <rect x={startX} y={tapeY - 4} width={edgeW - gap} height={8} fill="#DC2626" rx={1} />
-            <rect x={startX + edgeW} y={tapeY - 4} width={midW - gap * 2} height={8} fill="#DC2626" rx={1} />
-            <rect x={startX + edgeW + midW} y={tapeY - 4} width={edgeW - gap} height={8} fill="#DC2626" rx={1} />
-          </>
-        );
-      })()}
+      {/* электронный маркер и сигнальная лента */}
+      <rect x={cx - 18} y={Y(lv.marker)} width="36" height="2" fill={MUT} />
+      <rect x={cx - 26} y={Y(lv.tape)} width="52" height="2" fill={WARN} />
 
-      {/* ПГС над плитой (по всей ширине траншеи) */}
-      <rect x={xTL} y={Y(yMM.pgsAbove)} width={Bpx} height={Y(yMM.plateTop) - Y(yMM.pgsAbove)} fill={`url(#${pgsId})`} />
-      <line x1={xTL} y1={Y(yMM.plateTop)} x2={xTR} y2={Y(yMM.plateTop)} stroke="#999" strokeWidth="0.6" />
+      <Ground y={Y(Htr)} soilId={soil} />
 
-      {/* ПГС от верха плиты до дна — общий фон, поверх которого встаёт ряд конструкций */}
-      <rect x={xTL} y={Y(yMM.plateTop)} width={Bpx} height={Y(yMM.bottom) - Y(yMM.plateTop)} fill={`url(#${pgsId})`} />
-      <line x1={xTL} y1={Y(yMM.plateBot)} x2={xTR} y2={Y(yMM.plateBot)} stroke="#999" strokeWidth="0.6" />
-      <line x1={xTL} y1={Y(yMM.trayBot)} x2={xTR} y2={Y(yMM.trayBot)} stroke="#999" strokeWidth="0.6" />
+      {/* размеры теми же обозначениями, что в формулах */}
+      <DimH x1={xL(0)} x2={xR(0)} y={Y(0) + 12} label="B₁" />
+      <DimH x1={xL(Htr)} x2={xR(Htr)} y={Y(Htr) - 9} label="B₂" />
+      <DimH x1={xL(0)} x2={rowLeft} y={Y(0) + 24} label="B₃" />
+      <DimH x1={rowLeft + rowW} x2={xR(0)} y={Y(0) + 24} label="B₄" />
+      <DimV x={dimRight} y1={Y(lv.trayBottom)} y2={Y(lv.bottom)} label="h₁" side="r" />
+      <DimV x={dimRight} y1={Y(lv.trayTop)} y2={Y(lv.trayBottom)} label="h_лот" side="r" />
+      <DimV x={dimRight} y1={Y(lv.plateBottom)} y2={Y(lv.trayTop)} label="h₃" side="r" />
+      <DimV x={dimRight + 26} y1={Y(lv.tape)} y2={Y(lv.plateTop)} label="h₅" side="r" />
+      <DimV x={dimRight + 26} y1={Y(lv.surface)} y2={Y(lv.tape)} label="h₆" side="r" />
+      <DimV x={cx - half(Math.max(g.B1, g.B2)) - 16} y1={Y(Htr)} y2={Y(0)} label="H_тр" side="l" />
 
-      {/* ЗПТ по краям траншеи, в засыпке рядом с крайними лотками */}
-      <circle cx={(xTL + rowLeft) / 2} cy={Y((yMM.plateTop + yMM.plateBot) / 2)} r={5} fill="#fff" stroke="#333" strokeWidth="1.2" />
-      <circle cx={(xTR + rowRight) / 2} cy={Y((yMM.plateTop + yMM.plateBot) / 2)} r={5} fill="#fff" stroke="#333" strokeWidth="1.2" />
-
-      {/* Ряд конструкций: на 110–220 кВ по лотку на каждую цепь */}
-      {trayCenters.map((tcx, k) => {
-        const xLL = tcx - halfL;
-        const xLR = tcx + halfL;
-        const xIL = tcx - halfI;
-        const cableCy = Y(yMM.trayBot) - bPx - cableR - 4;
-        const gap = cavityW / 3;
-        return (
-          <g key={`tray${k}`}>
-            {/* Плита перекрытия */}
-            <rect x={xLL - 6} y={Y(yMM.plateTop)} width={(xLR - xLL) + 12} height={Y(yMM.plateBot) - Y(yMM.plateTop)} fill={`url(#${concId})`} stroke="#333" strokeWidth="0.9" />
-
-            {/* Лоток U-образный */}
-            <path
-              d={`M${xLL} ${Y(yMM.trayTop)} V${Y(yMM.trayBot)} H${xLR} V${Y(yMM.trayTop)} H${xLR - wPx} V${Y(yMM.trayBot) - bPx} H${xLL + wPx} V${Y(yMM.trayTop)} Z`}
-              fill={`url(#${concId})`} stroke="#333" strokeWidth="0.9"
-            />
-
-            {/* ПГС внутри лотка */}
-            <rect x={xIL} y={Y(yMM.trayTop)} width={cavityW} height={Y(yMM.trayBot) - bPx - Y(yMM.trayTop)} fill={`url(#${pgsId})`} />
-
-            {/* Три кабеля одной цепи — треугольником, как их и укладывают;
-                при ином числе кабелей в лотке раскладываем в ряд по дну */}
-            {showCables === 3 ? (
-              <>
-                {[0, 1].map((i) => (
-                  <g key={`c${i}`}>
-                    <circle cx={xIL + gap * (i + 1)} cy={cableCy} r={cableR} fill="#fff" stroke={ACC} strokeWidth="1.3" />
-                    <circle cx={xIL + gap * (i + 1)} cy={cableCy} r={cableR * 0.3} fill={ACC} opacity="0.55" />
-                  </g>
-                ))}
-                <circle cx={tcx} cy={cableCy - cableR * 1.8} r={cableR} fill="#fff" stroke={ACC} strokeWidth="1.3" />
-                <circle cx={tcx} cy={cableCy - cableR * 1.8} r={cableR * 0.3} fill={ACC} opacity="0.55" />
-              </>
-            ) : (
-              Array.from({ length: showCables }, (_, i) => {
-                const step = cavityW / (showCables + 1);
-                return (
-                  <g key={`c${i}`}>
-                    <circle cx={xIL + step * (i + 1)} cy={cableCy} r={cableR} fill="#fff" stroke={ACC} strokeWidth="1.3" />
-                    <circle cx={xIL + step * (i + 1)} cy={cableCy} r={cableR * 0.3} fill={ACC} opacity="0.55" />
-                  </g>
-                );
-              })
-            )}
-          </g>
-        );
-      })}
-
-      {/* Размерные выноски */}
-      <DimV x={dimX} y1={yG} y2={yEnd} label={`${Math.round(H)}`} side="l" />
-      <DimV x={578} y1={Y(yMM.pgsAbove)} y2={Y(yMM.plateTop)} label={`${hPgsAbove}`} side="r" />
-      <DimV x={578} y1={Y(yMM.plateTop)} y2={Y(yMM.plateBot)} label={`${plH}`} side="r" />
-      <DimV x={578} y1={Y(yMM.plateBot)} y2={Y(yMM.trayTop)} label={`${hPgsTop}`} side="r" />
-      <DimV x={578} y1={Y(yMM.trayTop)} y2={Y(yMM.trayBot)} label={`${Math.round(lH)}`} side="r" />
-      <DimV x={578} y1={Y(yMM.trayBot)} y2={yEnd} label={`${Math.round(hPgsBot)}`} side="r" />
-      <DimH x1={xTL} x2={xTR} y={yEnd + 14} label={`${Math.round(B)} мм`} />
-
-      {/* Подписи */}
-      <line x1={rowRight + 4} y1={Y(yMM.trayTop) + (Y(yMM.trayBot) - Y(yMM.trayTop)) / 2} x2={xTR + 18} y2={Y(yMM.trayTop) + (Y(yMM.trayBot) - Y(yMM.trayTop)) / 2 - 14} stroke={MUT} strokeWidth="0.6" />
-      <Txt x={xTR + 20} y={Y(yMM.trayTop) + (Y(yMM.trayBot) - Y(yMM.trayTop)) / 2 - 16} t="лоток" fill={ACC} size={9} />
-
-      <line x1={rowRight + 6} y1={Y((yMM.plateTop + yMM.plateBot) / 2)} x2={xTR + 18} y2={Y((yMM.plateTop + yMM.plateBot) / 2) - 12} stroke={MUT} strokeWidth="0.6" />
-      <Txt x={xTR + 20} y={Y((yMM.plateTop + yMM.plateBot) / 2) - 14} t="плита" fill={ACC} size={9} />
-
-      <line x1={xTL} y1={Y(yMM.trayBot) + (Y(yMM.bottom) - Y(yMM.trayBot)) / 2} x2={xTL - 14} y2={Y(yMM.trayBot) + (Y(yMM.bottom) - Y(yMM.trayBot)) / 2 + 10} stroke={MUT} strokeWidth="0.6" />
-      <Txt x={xTL - 16} y={Y(yMM.trayBot) + (Y(yMM.bottom) - Y(yMM.trayBot)) / 2 + 12} t="ПГС" anchor="end" fill={ACC} size={9} />
-
-      <line x1={xTL - 4} y1={yG + (Y(yMM.tape) - yG) / 2} x2={xTL - 14} y2={yG + (Y(yMM.tape) - yG) / 2 + 10} stroke={MUT} strokeWidth="0.6" />
-      <Txt x={xTL - 16} y={yG + (Y(yMM.tape) - yG) / 2 + 12} t="грунт" anchor="end" fill={ACC} size={9} />
-
-      <text x={cx} y={yEnd + 30} textAnchor="middle" fontSize="10" fontFamily="JetBrains Mono, monospace" fill={ACC} fontWeight="600">
-        {n > 1 ? `${n}×` : ""}{tray.mark} · {plate.mark} · Сер. 3.006.1-2.87{n > 1 ? " · по лотку на цепь" : ""}
-      </text>
+      <Txt x={W - 4} y={H - 16} t={`B₁ = ${g.B1} мм · H_тр = ${Math.round(Htr)} мм`} anchor="end" size={7} />
+      <Txt
+        x={W - 4}
+        y={H - 6}
+        t={`${n > 1 ? `${n}×` : ""}${tray.mark} · ${plate.mark} · Сер. 3.006.1-2.87`}
+        anchor="end"
+        size={7}
+      />
     </svg>
   );
 }

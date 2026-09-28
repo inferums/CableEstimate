@@ -18,15 +18,49 @@ export interface GnbParams {
   pipes: PipeEntry[];
 }
 
-export interface LotokParams extends TrenchParamsBase {
+/**
+ * Прокладка в железобетонных лотках, разрез «Тип I».
+ *
+ * Названия полей — обозначения с разреза: B₃ на чертеже и `b3` здесь одно и
+ * то же. Все размеры в миллиметрах, как на чертеже; в объёмы они переводятся
+ * при расчёте. Ширина по дну не задаётся — она равна ширине лотка плюс
+ * пазухи, иначе чертёж и ведомость разошлись бы при первой же правке.
+ */
+export interface LotokParams {
   trayMark: string;
   plateMark: string;
-  /* Толщины слоёв (мм) — задаются пользователем */
-  topFill: number;      // верхняя засыпка
-  tapeWidth: number;    // ширина сигнальной ленты
-  pgsAbove: number;     // ПГС над плитой
-  pgsTop: number;       // ПГС над лотком
-  pgsInside: number;    // ПГС внутри лотка
+  /** Пазух слева: от стенки траншеи до лотка, мм. Щиты крепления — внутри него */
+  b3: number;
+  /** Пазух справа, мм */
+  b4: number;
+  /** Ширина по верху, мм. Пусто — равна ширине по дну */
+  b2?: number;
+  /** Толщина щитов крепления, мм */
+  bShield: number;
+  /** От края плиты до трубы ЗПТ, мм */
+  b5: number;
+  /** Подсыпка под лоток, мм */
+  h1: number;
+  /** Подсыпка под кабель внутри лотка, мм */
+  h2: number;
+  /** От верха лотка до низа плиты, мм */
+  h3: number;
+  /** От верха плиты до электронного маркера, мм — только для разреза */
+  h4: number;
+  /** От верха плиты до сигнальной ленты, мм */
+  h5: number;
+  /** Материал подсыпки и засыпки пазух */
+  beddingType: "sand" | "pgs";
+  /** Чем засыпают от плиты до благоустройства */
+  backfillType: "soil" | "sand";
+  /** Труб ЗПТ на цепь, шт */
+  zptCount: number;
+  /** Кабелей ВОЛС на линию, шт */
+  volsCount: number;
+  /** Шаг электронных маркеров, м */
+  markerStep: number;
+  /** Шаг хомутов крепления, м */
+  clampStep: number;
 }
 
 export interface OpenParams extends TrenchParamsBase {
@@ -194,7 +228,10 @@ export interface VorItem {
   name: string;
   unit: string;
   qty: number;
+  /** Запись с подставленными числами */
   formula: string;
+  /** Та же формула в обозначениях разреза, если позиция считается по нему */
+  symbols?: string;
 }
 
 /**
@@ -232,4 +269,6 @@ export interface VorRow {
   qty: number;
   segments: string[];
   formula: string;
+  /** Формула в обозначениях разреза — берётся от первого участка позиции */
+  symbols?: string;
 }

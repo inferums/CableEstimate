@@ -1,4 +1,4 @@
-import { DEFAULT_SOIL, DEFAULT_SURFACES } from "../data/catalogs";
+import { DEFAULT_SOIL, DEFAULT_SURFACES, LOTOK_TYPE1 } from "../data/catalogs";
 import type { ProjectState, Segment, TrenchType, VoltageClass } from "../lib/types";
 
 /**
@@ -29,11 +29,7 @@ export function project(over: {
     params: {
       gnb: { boreDiameter: 300, pipes: [{ id: "p1", diameter: 110, count: 4 }] },
       block: { width, bedding: 0.1, beddingType: "sand", pipes: [{ id: "p2", diameter: 160, count: 2 }] },
-      lotok: {
-        width, bedding: 0.1, beddingType: "sand",
-        trayMark: "Л4-8", plateMark: "П5-8",
-        topFill: 300, tapeWidth: 950, pgsAbove: 100, pgsTop: 70, pgsInside: 70,
-      },
+      lotok: { ...LOTOK_TYPE1 },
       open: { width, bedding: 0.1, beddingType: "sand", cover: "pzk", plateMark: "П5д-8" },
       splice: { width, bedding: 0.1, beddingType: "sand" },
     },

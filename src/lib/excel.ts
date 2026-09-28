@@ -149,7 +149,10 @@ function sheetVor(wb: ExcelJS.Workbook, state: ProjectState, vor: VorResult) {
     }
 
     n++;
-    const row = ws.addRow([n, r.name, r.unit, r2(r.qty), r.formula || "", state.projectCode || "", "", ""]);
+    /* В графе формул сначала правило в обозначениях разреза, потом подстановка:
+       проверяющему нужно и то, и другое */
+    const formula = r.symbols ? `${r.symbols}\n${r.formula}` : r.formula || "";
+    const row = ws.addRow([n, r.name, r.unit, r2(r.qty), formula, state.projectCode || "", "", ""]);
     row.font = { size: 10 };
     row.getCell(1).alignment = { horizontal: "center", vertical: "top" };
     row.getCell(2).alignment = { wrapText: true, vertical: "top" };

@@ -10,6 +10,8 @@ import {
   VOLTAGE_META,
   isTypeAllowed,
 } from "../data/catalogs";
+import { lotokGeometry } from "./section-lotok";
+import { lotokSection } from "./lotok-items";
 import type {
   PipeEntry,
   ProjectState,
@@ -28,9 +30,16 @@ export type DugTrenchType = Exclude<TrenchType, "gnb">;
 
 export const isDugType = (t: TrenchType): t is DugTrenchType => t !== "gnb";
 
-/** Параметры траншеи, общие для всех типов, кроме ГНБ */
-const dugParams = (state: ProjectState, type: DugTrenchType): TrenchParamsBase =>
-  state.params[type];
+/**
+ * Параметры траншеи, общие для типов с прямоугольным сечением.
+ *
+ * Лоток сюда не входит: его сечение описано разрезом «Тип I», где ширина
+ * складывается из лотка и пазух, а не задаётся одним числом.
+ */
+const dugParams = (state: ProjectState, type: DugTrenchType): TrenchParamsBase | null => {
+  const p = state.params[type];
+  return "width" in p ? p : null;
+};
 
 export interface Warning {
   code: string;
@@ -45,6 +54,8 @@ export interface SegmentCalc {
   hAvg: number;
   excavation: number;
   beddingVol: number;
+  /** Объём под благоустройством — часть разработки, не возвращаемая грунтом */
+  blagoVol: number;
   topFillVol: number;
   structVol: number;
   backfill: number;
@@ -236,46 +247,6 @@ function earthworkItems(B: number, hAvg: number, L: number, structVol: number, b
 }
 
 /* ================= генерация монтажных работ для лотков ================= */
-function lotokInstallItems(seg: Segment, state: ProjectState): VorItem[] {
-  const lp = state.params.lotok;
-  const L = seg.length;
-  const tray = TRAYS.find((t) => t.mark === lp.trayMark) ?? TRAYS[0];
-  const plate = PLATES.find((t) => t.mark === lp.plateMark) ?? PLATES[0];
-  const trayLen = tray.length / 1000;
-  const plateLen = plate.length / 1000;
-  /* На 110–220 кВ каждая цепь идёт в своём лотке, поэтому ряд конструкций кратен числу цепей */
-  const n = structureCount(state);
-  const perRow = `${n > 1 ? `·${n} ряда` : ""}`;
-  const trays = Math.ceil(L / trayLen) * n;
-  const plates = Math.ceil(L / plateLen) * n;
-
-  const trayOuterW = tray.width / 1000;
-  const trayOuterH = (tray.height + plate.thickness) / 1000;
-  /* Объём бетона — из номенклатуры серии, а не из габаритов изделия */
-  const trayVol = trays * tray.volume;
-  const plateVol = plates * plate.volume;
-
-  const hydroArea = (2 * trayOuterW + 2 * trayOuterH) * trayLen * trays;
-  const masticKg = hydroArea * 3 * 2.5;
-
-  const zptLen = L * 2 * n;
-
-  const items: VorItem[] = [];
-
-  items.push({ name: `Монтаж железобетонных лотков`, unit: "м³", qty: round3(trayVol), formula: `${trays}·${f(tray.volume, 3)} = ${f(trayVol,3)}` });
-  items.push({ name: `Лоток ${tray.mark} ${tray.length}×${tray.width}×${tray.height} мм`, unit: "шт", qty: trays, formula: `⌈${f(L)}/${f(trayLen)}⌉${perRow} = ${trays}` });
-
-  items.push({ name: `Монтаж железобетонных плит перекрытия`, unit: "м³", qty: round3(plateVol), formula: `${plates}·${f(plate.volume, 3)} = ${f(plateVol,3)}` });
-  items.push({ name: `Плита перекрытия ${plate.mark} ${plate.length}×${plate.width}×${plate.thickness} мм`, unit: "шт", qty: plates, formula: `⌈${f(L)}/${f(plateLen)}⌉${perRow} = ${plates}` });
-
-  items.push({ name: `Гидроизоляция битумно-эмульсионной мастикой в 3 слоя`, unit: "м²", qty: round2(hydroArea), formula: `(${f(trayOuterW)}+${f(trayOuterH)})·2·${f(trayLen)}·${trays} = ${f(hydroArea)}` });
-  items.push({ name: `Мастика битумно-эмульсионная (расход 2,5 кг/м²)`, unit: "кг", qty: round2(masticKg), formula: `${f(hydroArea)}·3·2,5 = ${f(masticKg)}` });
-
-  items.push({ name: `Прокладка ЗТП труб 50/6,5 мм`, unit: "м", qty: round2(zptLen), formula: `${f(L)}·2${perRow} = ${f(zptLen)}` });
-  items.push({ name: `ЗТП трубы 50/6,5 мм (с запасом 2%)`, unit: "м", qty: round2(zptLen * 1.02), formula: `${f(zptLen)}·1,02 = ${f(zptLen * 1.02)}` });
-
-  return items;
-}
 
 /* ================= генерация монтажных работ для открытой траншеи ================= */
 function openInstallItems(seg: Segment, state: ProjectState): VorItem[] {
@@ -418,16 +389,31 @@ function spliceItems(seg: Segment, state: ProjectState): { earth: VorItem[]; ins
 }
 
 /* ================= благоустройство ================= */
+
+/** Суммарная толщина покрытия участка, м — она же H_благо на разрезе */
+export function surfaceThickness(state: ProjectState, seg: Segment): number {
+  const surf = state.surfaces.find((s) => s.id === seg.surfaceId) ?? state.surfaces[0];
+  if (!surf) return 0;
+  return surf.layers.reduce((sum, l) => sum + l.thickness, 0) / 100;
+}
+
+/** Ширина траншеи по верху, м — для лотка её задаёт разрез, для остальных откосы */
+function topWidth(state: ProjectState, seg: Segment): number {
+  if (seg.type === "lotok") {
+    const g = lotokGeometry(state.params.lotok, (seg.h1 + seg.h2) / 2, structureCount(state), 0);
+    return g.B2 / 1000;
+  }
+  const p = state.params[seg.type];
+  if (!("width" in p)) return 0;
+  return trenchTopWidth(p.width, (seg.h1 + seg.h2) / 2, CALC.slopeK);
+}
+
 function surfaceItems(seg: Segment, state: ProjectState): VorItem[] {
   if (seg.type === "gnb") return [];
   const surf = state.surfaces.find((s) => s.id === seg.surfaceId) ?? state.surfaces[0];
   if (!surf || surf.layers.length === 0) return [];
 
-  const p = state.params[seg.type];
-  const B = p.width;
-  const m = CALC.slopeK;
-  const hAvg = (seg.h1 + seg.h2) / 2;
-  const Btop = trenchTopWidth(B, hAvg, m);
+  const Btop = topWidth(state, seg);
   const area = (Btop + 2 * CALC.rehabWiden) * seg.length;
   const items: VorItem[] = [];
 
@@ -457,8 +443,9 @@ function cableItems(seg: Segment, state: ProjectState): VorItem[] {
   items.push({ name: `Прокладка кабеля ${v.label} (${v.cableNote})`, unit: "м", qty: round3(cable), formula: `${f(Lcable)}·(1+${c(CALC.cableReserve)})·${nCables} = ${f(cable)}` });
 
   /* Единственная позиция сигнальной ленты: одна лента на цепь.
-     Раньше лента попадала в ведомость дважды — в монтажных и в кабельных работах. */
-  if (seg.type !== "gnb" && seg.type !== "splice") {
+     Раньше лента попадала в ведомость дважды — в монтажных и в кабельных работах.
+     У лотка ленты свои: их состав задаёт разрез «Тип I», где лент две. */
+  if (seg.type !== "gnb" && seg.type !== "splice" && seg.type !== "lotok") {
     const tapeLen = L * state.chains;
     items.push({ name: `Укладка сигнальной ленты ЛС-450 «Осторожно кабель»`, unit: "м", qty: round2(tapeLen), formula: `${f(L)}·${state.chains} = ${f(tapeLen)}` });
     items.push({ name: `Сигнальная лента ЛС-450 (с запасом 2%)`, unit: "м", qty: round2(tapeLen * 1.02), formula: `${f(tapeLen)}·1,02 = ${f(tapeLen * 1.02)}` });
@@ -514,6 +501,8 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
   let structVol = 0;
   let backfill = 0;
   let surplus = 0;
+  /* Объём под благоустройством — вынут, но грунтом обратно не возвращается */
+  let blagoVol = 0;
   let note = "";
 
   if (active && L > 0) {
@@ -570,9 +559,24 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
         warnings.push({ code: "tray-deep", text: `Глубина ${hAvg.toFixed(2)} м меньше высоты лотка с плитой ${trayOuterH.toFixed(2)} м`, severity: "warn" });
       }
 
-      const earthItemsList = earthworkItems(B, hAvg, L, structVol, lp.beddingType, lp.bedding, state.soil);
-      subSections.push({ section: 1, title: subTitle, items: earthItemsList });
-      subSections.push({ section: 2, title: subTitle, items: lotokInstallItems(seg, state) });
+      /* Объёмы берутся из слоёв разреза «Тип I», а не из усреднённой траншеи:
+         подписанный на чертеже размер и посчитанный объём — одно число */
+      const sec = lotokSection(state, seg, L, n, surfaceThickness(state, seg) * 1000);
+      for (const s of sec.subs) subSections.push({ ...s, title: subTitle });
+
+      excavation = sec.total;
+      beddingVol = sec.bedding;
+      topFillVol = sec.around;
+      structVol = sec.struct;
+      backfill = sec.backfill;
+      /* Наружу не возвращается всё, кроме обратной засыпки: основание,
+         конструкции, засыпка вокруг них и объём под благоустройством */
+      surplus = Math.max(0, sec.total - sec.backfill);
+      blagoVol = sec.blago;
+
+      note = n > 1
+        ? `${n}×лоток ${sec.g.tray.mark}, B₁=${sec.g.B1} мм, по лотку на цепь`
+        : `лоток ${sec.g.tray.mark}, B₁=${sec.g.B1} мм`;
     } else if (seg.type === "open") {
       const op = state.params.open;
       const earthItemsList = earthworkItems(B, hAvg, L, structVol, op.beddingType, op.bedding, state.soil);
@@ -614,7 +618,7 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
       if (structVol > b.struct + 1e-6) {
         warnings.push({ code: "struct-overflow", text: `Конструкции (${structVol.toFixed(2)} м³) не помещаются в сечение траншеи ${B} м × ${hAvg.toFixed(2)} м`, severity: "error" });
       }
-    } else {
+    } else if (seg.type !== "lotok") {
       /* ГНБ: обратной засыпки нет, весь объём скважины вытеснен трубами и раствором */
       backfill = 0;
       surplus = Math.min(excavation, structVol);
@@ -655,6 +659,7 @@ function calcSegment(state: ProjectState, seg: Segment): SegmentCalc {
     hAvg: round3(hAvg),
     excavation: round3(excavation),
     beddingVol: round3(beddingVol),
+    blagoVol: round3(blagoVol),
     topFillVol: round3(topFillVol),
     structVol: round3(structVol),
     backfill: round3(backfill),
@@ -710,6 +715,9 @@ export function buildVor(state: ProjectState): VorResult {
             qty: round3(item.qty),
             segments: [label],
             formula: item.formula ? `уч.${label}: ${item.formula}` : "",
+            /* Правило одно на позицию, поэтому берём его от первого участка:
+               повторять одинаковую строку для каждого участка незачем */
+            symbols: item.symbols,
           });
         }
       }

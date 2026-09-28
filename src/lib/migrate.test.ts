@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isSupportedVersion, migrateProject, SCHEMA_VERSION } from "./migrate";
 import { buildVor } from "./calc";
-import { PLATES, TRAYS } from "../data/catalogs";
+import { LOTOK_TYPE1, PLATES, TRAYS } from "../data/catalogs";
 import type { ProjectState } from "./types";
 
 /*
@@ -57,10 +57,32 @@ describe("миграция проекта версии 1", () => {
     expect(plate.width).toBe(tray.width);
   });
 
-  it("восстанавливает толщины слоёв лотка", () => {
+  it("переводит лоток на обозначения разреза «Тип I»", () => {
+    const { state, notes } = migrateProject(legacyProject(), 1);
+    const l = state.params.lotok;
+    for (const key of ["b3", "b4", "bShield", "h1", "h2", "h3", "h4", "h5", "zptCount", "clampStep"] as const) {
+      expect(Number.isFinite(l[key]), key).toBe(true);
+    }
+    /* В этом проекте лоток Л6-8 шире прежней траншеи 1,0 м — разложить нечего,
+       и миграция обязана сказать об этом, а не подставить числа молча */
+    expect(notes.some((n) => n.includes("не вмещала лоток"))).toBe(true);
+  });
+
+  it("сохраняет ширину траншеи, когда прежняя ширина вмещала лоток", () => {
+    const p = legacyProject();
+    /* Л3-8 шириной 780 мм внутри траншеи 1,0 м — свободные 220 мм делятся пополам */
+    (p.params.lotok as unknown as Record<string, unknown>).trayMark = "Л3-8";
+    const { state } = migrateProject(p, 1);
+    const l = state.params.lotok;
+    const tray = TRAYS.find((t) => t.mark === l.trayMark)!;
+    expect(tray.width + l.b3 + l.b4).toBe(1000);
+  });
+
+  it("старые поля лотка не остаются в проекте", () => {
     const { state } = migrateProject(legacyProject(), 1);
-    for (const key of ["topFill", "tapeWidth", "pgsAbove", "pgsTop", "pgsInside"] as const) {
-      expect(Number.isFinite(state.params.lotok[key]), key).toBe(true);
+    const raw = state.params.lotok as unknown as Record<string, unknown>;
+    for (const dead of ["width", "bedding", "topFill", "tapeWidth", "pgsAbove", "pgsTop", "pgsInside"]) {
+      expect(raw[dead], dead).toBeUndefined();
     }
   });
 
@@ -125,11 +147,7 @@ describe("ремонт повреждённых данных", () => {
 describe("проект текущей версии", () => {
   it("не трогается без причины", () => {
     const current = legacyProject();
-    current.params.lotok = {
-      width: 4.2, bedding: 0.1, beddingType: "sand",
-      trayMark: "Л4-8", plateMark: "П5-8",
-      topFill: 300, tapeWidth: 950, pgsAbove: 100, pgsTop: 70, pgsInside: 70,
-    };
+    current.params.lotok = { ...LOTOK_TYPE1, trayMark: "Л4-8", plateMark: "П5-8" };
     current.params.open.plateMark = "П5д-8";
     const { notes } = migrateProject(current, SCHEMA_VERSION);
     expect(notes).toEqual([]);

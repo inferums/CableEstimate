@@ -2,6 +2,7 @@ import { useState, type ReactElement } from "react";
 import {
   BORE_DIAMETERS,
   HDPE_DIAMETERS,
+  LOTOK_TYPE1,
   PLATES,
   PZK,
   TRAYS,
@@ -20,6 +21,7 @@ import type {
 } from "../lib/types";
 import { TrenchDiagram } from "./diagrams";
 import { structureCount } from "../lib/calc";
+import { LOTOK_SYMBOLS } from "../lib/section-lotok";
 import {
   Field,
   IconBlock,
@@ -83,12 +85,7 @@ export function defaultParamsFor(type: TrenchType): ParamsMap[TrenchType] {
     case "block":
       return { width: 0.8, bedding: 0.1, beddingType: "sand", pipes: [{ id: nextId(), diameter: 160, count: 2 }] };
     case "lotok":
-      return {
-        width: 1.0, bedding: 0.1, beddingType: "sand",
-        trayMark: "Л4-8", plateMark: "П5-8",
-        topFill: 300, tapeWidth: 950,
-        pgsAbove: 100, pgsTop: 70, pgsInside: 70,
-      };
+      return { ...LOTOK_TYPE1 };
     case "open":
       return { width: 0.7, bedding: 0.1, beddingType: "sand", cover: "pzk", plateMark: "П5д-8" };
     case "splice":
@@ -253,9 +250,17 @@ export function TrenchTypeForm({
   }
   if (type === "lotok") {
     const v = value as ParamsMap["lotok"];
+    /* Поля подписаны обозначениями с разреза «Тип I»: подпись поля, выноска на
+       чертеже и множитель в формуле ведомости — одна и та же буква */
+    const symFor = (id: string) => LOTOK_SYMBOLS.find((s) => s.id === id);
+    const SymField = ({ id, value: n, onChange: set }: { id: string; value: number; onChange: (n: number) => void }) => {
+      const s = symFor(id);
+      return (
+        <NumField label={`${s?.sym ?? id} — ${s?.label ?? ""}`} value={n} onChange={set} suffix={s?.unit ?? "мм"} />
+      );
+    };
     return (
       <div className="space-y-4">
-        <BeddingRow value={v} onChange={(nv) => onChange(nv as ParamsMap[TrenchType])} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Тип лотка · Сер. 3.006.1-2.87">
             <Sel
@@ -280,13 +285,65 @@ export function TrenchTypeForm({
           </Field>
         </div>
         <div className="border-t border-line pt-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-mut mb-3">Толщины слоёв (мм)</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-mut mb-3">
+            Ширины по разрезу · B₁ = ширина лотка + B₃ + B₄
+          </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <NumField label="Верхняя засыпка" value={v.topFill} onChange={(n) => onChange({ ...v, topFill: n })} suffix="мм" />
-            <NumField label="Ширина ленты" value={v.tapeWidth} onChange={(n) => onChange({ ...v, tapeWidth: n })} suffix="мм" />
-            <NumField label="ПГС над плитой" value={v.pgsAbove} onChange={(n) => onChange({ ...v, pgsAbove: n })} suffix="мм" />
-            <NumField label="ПГС над лотком" value={v.pgsTop} onChange={(n) => onChange({ ...v, pgsTop: n })} suffix="мм" />
-            <NumField label="ПГС внутри лотка" value={v.pgsInside} onChange={(n) => onChange({ ...v, pgsInside: n })} suffix="мм" />
+            <SymField id="b3" value={v.b3} onChange={(n) => onChange({ ...v, b3: n })} />
+            <SymField id="b4" value={v.b4} onChange={(n) => onChange({ ...v, b4: n })} />
+            <SymField id="bShield" value={v.bShield} onChange={(n) => onChange({ ...v, bShield: n })} />
+            <SymField id="b5" value={v.b5} onChange={(n) => onChange({ ...v, b5: n })} />
+            <NumField
+              label="B₂ — ширина по верху (0 — как по дну)"
+              value={v.b2 ?? 0}
+              onChange={(n) => onChange({ ...v, b2: n > 0 ? n : undefined })}
+              suffix="мм"
+            />
+          </div>
+        </div>
+
+        <div className="border-t border-line pt-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-mut mb-3">Высоты по разрезу</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <SymField id="h1" value={v.h1} onChange={(n) => onChange({ ...v, h1: n })} />
+            <SymField id="h2" value={v.h2} onChange={(n) => onChange({ ...v, h2: n })} />
+            <SymField id="h3" value={v.h3} onChange={(n) => onChange({ ...v, h3: n })} />
+            <SymField id="h4" value={v.h4} onChange={(n) => onChange({ ...v, h4: n })} />
+            <SymField id="h5" value={v.h5} onChange={(n) => onChange({ ...v, h5: n })} />
+          </div>
+          <p className="text-[10px] text-mut2 mt-2 leading-snug">
+            h_лот и h_пл — из справочника по маркам. h₆ и глубина траншеи H_тр не вводятся: H_тр
+            задаётся на участке, h₆ остаётся от неё за вычетом остальных слоёв и благоустройства.
+          </p>
+        </div>
+
+        <div className="border-t border-line pt-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-mut mb-3">Материалы и комплектация</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <Field label="Подсыпка и засыпка пазух">
+              <Sel
+                value={v.beddingType}
+                onChange={(t) => onChange({ ...v, beddingType: t as "sand" | "pgs" })}
+                options={[
+                  { value: "pgs", label: "ПГС" },
+                  { value: "sand", label: "Песок" },
+                ]}
+              />
+            </Field>
+            <Field label="Обратная засыпка над плитой">
+              <Sel
+                value={v.backfillType}
+                onChange={(t) => onChange({ ...v, backfillType: t as "soil" | "sand" })}
+                options={[
+                  { value: "soil", label: "Местный грунт" },
+                  { value: "sand", label: "Песок" },
+                ]}
+              />
+            </Field>
+            <NumField label="Труб ЗПТ на цепь" value={v.zptCount} onChange={(n) => onChange({ ...v, zptCount: n })} suffix="шт" />
+            <NumField label="Кабелей ВОЛС" value={v.volsCount} onChange={(n) => onChange({ ...v, volsCount: n })} suffix="шт" />
+            <NumField label="Шаг электронных маркеров" value={v.markerStep} onChange={(n) => onChange({ ...v, markerStep: n })} suffix="м" />
+            <NumField label="Шаг хомутов" value={v.clampStep} onChange={(n) => onChange({ ...v, clampStep: n })} suffix="м" />
           </div>
         </div>
       </div>
@@ -403,10 +460,10 @@ function summaryFor(type: TrenchType, p: ParamsMap): string[] {
     ];
   if (type === "lotok")
     return [
-      `B=${p.lotok.width} м`,
       p.lotok.trayMark,
       p.lotok.plateMark,
-      `подсыпка ${Math.round(p.lotok.bedding * 100)} см`,
+      `пазухи ${p.lotok.b3}/${p.lotok.b4} мм`,
+      `h₁=${p.lotok.h1} мм`,
     ];
   if (type === "open")
     return [

@@ -1,4 +1,4 @@
-import type { Surface, TrenchType, VoltageClass } from "../lib/types";
+import type { LotokParams, Surface, TrenchType, VoltageClass } from "../lib/types";
 
 /** Стандартные наружные диаметры труб ПНД (ПЭ100), мм */
 export const HDPE_DIAMETERS = [
@@ -282,4 +282,31 @@ export const CALC = {
   trayWall: 70,
   trayBottom: 70,
   rehabWiden: 0.15, // уширение при благоустройстве, м
+};
+
+/**
+ * Разрез «Тип I» — прокладка в лотках, значения по умолчанию.
+ *
+ * Взяты с чертежа «В лотке тип1»: лоток Л5-8, плита П5-8, пазухи 330 и 250,
+ * подсыпка 100. Один источник для нового проекта, миграции и проверок —
+ * иначе умолчания разойдутся между местами, где создаётся проект.
+ */
+export const LOTOK_TYPE1: LotokParams = {
+  trayMark: "Л5-8",
+  plateMark: "П5-8",
+  b3: 330,
+  b4: 250,
+  bShield: 50,
+  b5: 130,
+  h1: 100,
+  h2: 100,
+  h3: 100,
+  h4: 150,
+  h5: 250,
+  beddingType: "pgs",
+  backfillType: "soil",
+  zptCount: 2,
+  volsCount: 1,
+  markerStep: 25,
+  clampStep: 1,
 };

@@ -34,7 +34,7 @@ import { ComparisonTable } from "./components/comparison";
 import { ProgressPanel } from "./components/progress";
 import { SmetaPanel } from "./components/smeta";
 import { TrenchDiagram } from "./components/diagrams";
-import { DEFAULT_SOIL, DEFAULT_SURFACES, TRENCH_META, VOLTAGE_META } from "./data/catalogs";
+import { DEFAULT_SOIL, DEFAULT_SURFACES, LOTOK_TYPE1, TRENCH_META, VOLTAGE_META } from "./data/catalogs";
 import { buildVor, SOIL_GROUP_MAX, SOIL_GROUP_MIN, structureCount } from "./lib/calc";
 import { exportVorExcel } from "./lib/excel";
 import { downloadDxf } from "./lib/dxf-export";
@@ -84,7 +84,7 @@ function defaultState(): ProjectState {
     params: {
       gnb: { boreDiameter: 300, pipes: [{ id: "p1", diameter: 110, count: 4 }] },
       block: { width: 0.8, bedding: 0.1, beddingType: "sand", pipes: [{ id: "p2", diameter: 160, count: 2 }] },
-      lotok: { width: 1.0, bedding: 0.1, beddingType: "sand", trayMark: "Л4-8", plateMark: "П5-8", topFill: 300, tapeWidth: 950, pgsAbove: 100, pgsTop: 70, pgsInside: 70 },
+      lotok: { ...LOTOK_TYPE1 },
       open: { width: 0.7, bedding: 0.1, beddingType: "sand", cover: "pzk", plateMark: "П5д-8" },
       splice: { width: 1.5, bedding: 0.1, beddingType: "sand" },
     },

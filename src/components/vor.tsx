@@ -119,8 +119,14 @@ export function VorSheet({ state, vor }: { state: ProjectState; vor: VorResult }
                     <td className="py-1 pr-2 text-body">{r.name}</td>
                     <td className="py-1 pr-2 font-mono text-mut text-[11px]">{r.unit}</td>
                     <td className="py-1 pr-3 text-right font-mono font-bold text-ink">{fmt(r.qty)}</td>
-                    <td className="py-1 font-mono text-[9px] text-mut2 hidden lg:table-cell max-w-[280px] truncate" title={r.formula}>
-                      {r.formula || "—"}
+                    {/* Сначала правило в обозначениях разреза, под ним — та же
+                        формула с подставленными числами */}
+                    <td
+                      className="py-1 font-mono text-[9px] hidden lg:table-cell max-w-[280px]"
+                      title={r.symbols ? `${r.symbols}\n${r.formula}` : r.formula}
+                    >
+                      {r.symbols && <div className="text-accent-deep truncate">{r.symbols}</div>}
+                      <div className="text-mut2 truncate">{r.formula || "—"}</div>
                     </td>
                   </tr>
                 </tbody>

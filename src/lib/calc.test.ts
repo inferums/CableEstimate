@@ -36,8 +36,11 @@ describe("баланс грунта", () => {
         const dug = sumRows(vor.rows, /^(Разработка|Зачистка)/);
         const placed =
           sumRows(vor.rows, /^Обратная засыпка/) +
-          sumRows(vor.rows, /^(Устройство основания|Защитный слой)/) +
-          c.structVol;
+          sumRows(vor.rows, /^(Устройство основания|Защитный слой|Засыпка пазух)/) +
+          c.structVol +
+          /* Грунт под благоустройством вынут, но на его место ложится покрытие,
+             а не грунт: у разрезов со своей раскладкой слоёв это отдельный объём */
+          c.blagoVol;
 
         expect(dug, "разработка по позициям против объёма траншеи").toBeCloseTo(c.excavation, 1);
         expect(placed, "засыпка с конструкциями против объёма траншеи").toBeCloseTo(c.excavation, 1);
@@ -45,11 +48,19 @@ describe("баланс грунта", () => {
     }
   }
 
-  it("объём траншеи не зависит от числа цепей — меняется только его распределение", () => {
+  /* На 110–220 кВ каждая цепь идёт в своём лотке, а ширина траншеи по разрезу
+     «Тип I» складывается из лотков и пазух — значит, объём обязан расти вместе
+     с числом цепей. Прежде ширина задавалась числом и от цепей не зависела. */
+  it("траншея расширяется на ширину лотка с каждой цепью", () => {
     const volumes = CHAIN_COUNTS.map(
       (chains) => buildVor(project({ type: "lotok", chains, voltage: "110-220" })).calcs[0].excavation,
     );
-    expect(new Set(volumes).size).toBe(1);
+    for (let i = 1; i < volumes.length; i++) {
+      expect(volumes[i]).toBeGreaterThan(volumes[i - 1]);
+    }
+    /* Шаг одинаковый: каждый следующий лоток добавляет свою ширину */
+    const steps = volumes.slice(1).map((v, i) => v - volumes[i]);
+    for (const step of steps) expect(step).toBeCloseTo(steps[0], 6);
   });
 
   it("чем больше конструкций, тем больше грунта на вывоз", () => {
